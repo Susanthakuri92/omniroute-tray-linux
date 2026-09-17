@@ -1,6 +1,6 @@
 # OmniRoute Tray (Linux/KDE)
 
-A Linux system-tray app and KDE Plasma 6 widget that supervises, monitors, and auto-updates the [OmniRoute](https://www.npmjs.com/package/omniroute) AI router. It replaces the manual workflow of starting `omniroute serve`, keeping it running across reboots, and updating it by hand.
+A Linux system-tray app and KDE Plasma 6 widget that supervises, monitors, and auto-updates the [OmniRoute](https://www.npmjs.com/package/omniroute). It replaces the manual workflow of starting `omniroute serve`, keeping it running across reboots, and updating it by hand.
 
 Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) (macOS).
 
