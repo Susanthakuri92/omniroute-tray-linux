@@ -2,7 +2,7 @@
 
 A Linux system-tray app and KDE Plasma 6 widget that supervises, monitors, and auto-updates the [OmniRoute](https://www.npmjs.com/package/omniroute) AI router. It replaces the manual workflow of starting `omniroute serve`, keeping it running across reboots, and updating it by hand.
 
-Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) (macOS). This is the native Linux port — a PySide6 system-tray app + a KDE Plasma 6 plasmoid widget.
+Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) (macOS).
 
 ## Screenshots
 
