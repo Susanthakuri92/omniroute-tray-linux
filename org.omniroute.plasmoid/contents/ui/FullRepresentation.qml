@@ -17,20 +17,15 @@ Item {
     Layout.maximumWidth: 420
 
     // Dynamic height matching content of active tab (no scrollbar needed)
-    readonly property real headerHeight: (headerRow ? headerRow.implicitHeight : 22) + 
-                                         (navRow ? navRow.implicitHeight : 26) + 
+    readonly property real headerHeight: (headerRow ? headerRow.implicitHeight : 22) +
+                                         (navRow ? navRow.implicitHeight : 26) +
                                          1 + (contentCol.spacing * 2)
-    readonly property real footerHeight: 1 + (footerRow ? footerRow.implicitHeight : 22) + 
+    readonly property real footerHeight: 1 + (footerRow ? footerRow.implicitHeight : 22) +
                                          (contentCol.spacing * 2)
     readonly property real marginsHeight: 24
 
-    readonly property real activeTabHeight: {
-        if (activeTab === "supervisor") return supervisorTab ? supervisorTab.implicitHeight : 260;
-        if (activeTab === "monitor") return Math.min(480, monitorTab ? monitorTab.implicitHeight : 320);
-        if (activeTab === "doctor") return Math.min(400, doctorTab ? doctorTab.implicitHeight : 300);
-        if (activeTab === "settings") return settingsTab ? settingsTab.implicitHeight : 160;
-        return 260;
-    }
+    // Fixed height to prevent UI from shifting when switching tabs
+    readonly property real activeTabHeight: 400
 
     readonly property real desiredHeight: headerHeight + activeTabHeight + footerHeight + marginsHeight
 
@@ -103,35 +98,12 @@ Item {
 
             Item { Layout.fillWidth: true }
 
-            // Quick restart button
+            // Quick logs
             Rectangle {
                 width: 24
                 height: 22
                 radius: 4
-                color: Qt.rgba(255, 255, 255, 0.08)
-                Text {
-                    anchors.centerIn: parent
-                    text: "↻"
-                    font.pixelSize: 13
-                    color: "#fafafa"
-                }
-                MouseArea {
-                    id: restartArea
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    hoverEnabled: true
-                    onClicked: { if (plasmoidItem) plasmoidItem.restartServer(); }
-                }
-                QQC2.ToolTip.visible: restartArea.containsMouse
-                QQC2.ToolTip.text: "Restart Server"
-            }
-
-            // Quick logs button
-            Rectangle {
-                width: 24
-                height: 22
-                radius: 4
-                color: Qt.rgba(255, 255, 255, 0.08)
+                color: logsArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
                 Text {
                     anchors.centerIn: parent
                     text: "📄"
@@ -149,34 +121,7 @@ Item {
                 QQC2.ToolTip.text: "Open Logs"
             }
 
-            // Keep Open / Pin button
-            Rectangle {
-                width: 24
-                height: 22
-                radius: 4
-                color: (plasmoidItem && plasmoidItem.pinned) ? "#ff2b4d" : Qt.rgba(255, 255, 255, 0.08)
-                border.color: (plasmoidItem && plasmoidItem.pinned) ? "#ff4d6d" : "transparent"
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "📌"
-                    font.pixelSize: 11
-                    color: (plasmoidItem && plasmoidItem.pinned) ? "#ffffff" : "#a1a1aa"
-                }
-                MouseArea {
-                    id: pinArea
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    hoverEnabled: true
-                    onClicked: {
-                        if (plasmoidItem) {
-                            plasmoidItem.pinned = !plasmoidItem.pinned;
-                        }
-                    }
-                }
-                QQC2.ToolTip.visible: pinArea.containsMouse
-                QQC2.ToolTip.text: (plasmoidItem && plasmoidItem.pinned) ? "Unpin (close on outside click)" : "Keep open (pin)"
-            }
+            // Keep Open / Pin button - [Removed]
 
             Text {
                 text: plasmoidItem ? plasmoidItem.serverVersion : "v3.8.50"
@@ -238,6 +183,9 @@ Item {
         ColumnLayout {
             id: supervisorTab
             Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.preferredHeight: cardRoot.activeTabHeight
+            clip: true
             spacing: 12
             visible: cardRoot.activeTab === "supervisor"
 
@@ -311,14 +259,14 @@ Item {
                     RowLayout {
                         id: btnRow
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 0
 
                         readonly property bool isBusy: plasmoidItem && plasmoidItem.serverActionState !== ""
 
                         // 1. PRIMARY ACTION (LEFT): Start / Stop Server
                         Rectangle {
                             Layout.fillWidth: true
-                            height: 36
+                            Layout.preferredHeight: 48
                             radius: 6
                             color: {
                                 if (!plasmoidItem) return "#1a3a20";
@@ -382,61 +330,36 @@ Item {
                             }
                         }
 
-                        // 2. SECONDARY ACTION (RIGHT): Restart Server
+                        // 2. RESTART BUTTON (RIGHT)
                         Rectangle {
-                            Layout.fillWidth: true
-                            height: 36
+                            Layout.preferredWidth: 64
+                            Layout.preferredHeight: 48
                             radius: 6
-                            color: (plasmoidItem && plasmoidItem.serverActionState === "restarting") ? 
-                                   "#2e2413" : Qt.rgba(255, 255, 255, 0.08)
-                            border.color: (plasmoidItem && plasmoidItem.serverActionState === "restarting") ? 
-                                          "#f59e0b" : Qt.rgba(255, 255, 255, 0.12)
+                            color: restartArea.containsMouse ? "#2e2413" : "#27272a"
+                            border.color: "#f59e0b"
                             border.width: 1
 
-                            RowLayout {
+                            Text {
                                 anchors.centerIn: parent
-                                spacing: 6
-
-                                Text {
-                                    visible: plasmoidItem && plasmoidItem.serverActionState === "restarting"
-                                    text: "⟳"
-                                    font.pixelSize: 13
-                                    color: "#fbbf24"
-                                    RotationAnimation on rotation {
-                                        running: plasmoidItem && plasmoidItem.serverActionState === "restarting"
-                                        loops: Animation.Infinite
-                                        from: 0
-                                        to: 360
-                                        duration: 750
-                                    }
-                                }
-
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.serverActionState === "restarting") ? 
-                                          "Restarting..." : "↻ Restart Server"
-                                    font.pixelSize: 11
-                                    font.weight: Font.Medium
-                                    color: (plasmoidItem && plasmoidItem.serverActionState === "restarting") ? 
-                                           "#fbbf24" : "#fafafa"
-                                }
+                                text: "↻"
+                                font.pixelSize: 18
+                                color: "#f59e0b"
                             }
-
                             MouseArea {
+                                id: restartArea
                                 anchors.fill: parent
                                 cursorShape: btnRow.isBusy ? Qt.ForbiddenCursor : Qt.PointingHandCursor
                                 enabled: !btnRow.isBusy
-                                onClicked: {
-                                    if (!plasmoidItem || btnRow.isBusy) return;
-                                    plasmoidItem.restartServer();
-                                }
+                                onClicked: { if (plasmoidItem) plasmoidItem.restartServer(); }
                             }
                         }
                     }
 
+
                     // Start on login
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 40
+                        Layout.preferredHeight: 40
                         radius: 6
                         color: Qt.rgba(255, 255, 255, 0.05)
                         border.color: Qt.rgba(255, 255, 255, 0.08)
@@ -456,7 +379,7 @@ Item {
                     // Auto-update
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 52
+                        Layout.preferredHeight: 52
                         radius: 6
                         color: Qt.rgba(255, 255, 255, 0.05)
                         border.color: Qt.rgba(255, 255, 255, 0.08)
@@ -509,7 +432,7 @@ Item {
         PlasmaComponents.ScrollView {
             id: monitorScrollView
             Layout.fillWidth: true
-            Layout.fillHeight: cardRoot.activeTab === "monitor"
+            Layout.fillHeight: true
             Layout.preferredHeight: cardRoot.activeTabHeight
             clip: true
             visible: cardRoot.activeTab === "monitor"
@@ -854,7 +777,7 @@ Item {
         PlasmaComponents.ScrollView {
             id: doctorScrollView
             Layout.fillWidth: true
-            Layout.fillHeight: cardRoot.activeTab === "doctor"
+            Layout.fillHeight: true
             Layout.preferredHeight: cardRoot.activeTabHeight
             clip: true
             visible: cardRoot.activeTab === "doctor"
@@ -964,6 +887,8 @@ Item {
         ColumnLayout {
             id: settingsTab
             Layout.fillWidth: true
+            Layout.preferredHeight: cardRoot.activeTabHeight
+            clip: true
             spacing: 12
             visible: cardRoot.activeTab === "settings"
 
@@ -991,22 +916,22 @@ Item {
 
                     QQC2.CheckBox {
                         text: "Provider health overview"
-                        checked: !plasmoidItem || plasmoidItem.showHealth
+                        checked: plasmoidItem ? plasmoidItem.showHealth : false
                         onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("health", checked); }
                     }
                     QQC2.CheckBox {
                         text: "Usage & quota bars"
-                        checked: !plasmoidItem || plasmoidItem.showUsage
+                        checked: plasmoidItem ? plasmoidItem.showUsage : false
                         onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("usage", checked); }
                     }
                     QQC2.CheckBox {
                         text: "Cost & token breakdown"
-                        checked: !plasmoidItem || plasmoidItem.showCost
+                        checked: plasmoidItem ? plasmoidItem.showCost : false
                         onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("cost", checked); }
                     }
                     QQC2.CheckBox {
                         text: "30-Day spend trend chart"
-                        checked: !plasmoidItem || plasmoidItem.showTrend
+                        checked: plasmoidItem ? plasmoidItem.showTrend : false
                         onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("trend", checked); }
                     }
                 }
@@ -1064,13 +989,14 @@ Item {
             Layout.fillWidth: true
             spacing: 8
 
-            // Port badge
+            // Port badge (with tooltip)
             Rectangle {
+                id: portRect
                 height: 22
                 width: 115
                 radius: 4
-                color: Qt.rgba(255, 255, 255, 0.08)
-                border.color: Qt.rgba(255, 255, 255, 0.12)
+                color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : Qt.rgba(255, 255, 255, 0.08)
+                border.color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : Qt.rgba(255, 255, 255, 0.12)
                 border.width: 1
 
                 RowLayout {
@@ -1090,32 +1016,61 @@ Item {
                 }
 
                 MouseArea {
+                    id: portMouseArea
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
                     onClicked: Qt.openUrlExternally("http://127.0.0.1:20128")
                 }
+                QQC2.ToolTip.visible: portMouseArea.containsMouse
+                QQC2.ToolTip.text: "Open OmniRoute Dashboard"
             }
 
             Item { Layout.fillWidth: true }
 
-            // Reload button
-            Text {
-                text: "⟳"
-                font.pixelSize: 15
-                color: "#a1a1aa"
+            // Reload button (wrapped for hover)
+            Rectangle {
+                width: 32
+                height: 32
+                implicitWidth: 32
+                implicitHeight: 32
+                radius: 4
+                color: refreshMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "⟳"
+                    font.pixelSize: 18
+                    color: "#a1a1aa"
+                }
                 MouseArea {
+                    id: refreshMouseArea
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { if (plasmoidItem) plasmoidItem.refreshAll(); }
+                    hoverEnabled: true
+                    onClicked: {
+                        if (plasmoidItem) {
+                            plasmoidItem.refreshAll();
+                        }
+                    }
                 }
+                QQC2.ToolTip.visible: refreshMouseArea.containsMouse
+                QQC2.ToolTip.text: "Refresh Dashboard"
             }
 
-            // GitHub button
-            Image {
-                width: 16
-                height: 16
-                source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'><path d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z'/></svg>"
-                opacity: githubArea.containsMouse ? 1.0 : 0.7
+            // GitHub button (wrapped for hover)
+            Rectangle {
+                width: 32
+                height: 32
+                implicitWidth: 32
+                implicitHeight: 32
+                radius: 4
+                color: githubArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
+                Image {
+                    anchors.centerIn: parent
+                    width: 20
+                    height: 20
+                    source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'><path d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z'/></svg>"
+                }
                 MouseArea {
                     id: githubArea
                     anchors.fill: parent
@@ -1123,6 +1078,8 @@ Item {
                     hoverEnabled: true
                     onClicked: Qt.openUrlExternally("https://github.com/diegosouzapw/OmniRoute")
                 }
+                QQC2.ToolTip.visible: githubArea.containsMouse
+                QQC2.ToolTip.text: "View on GitHub"
             }
         }
     }
