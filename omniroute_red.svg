@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <!-- Connecting lines (white) -->
+  <line x1="12" y1="12" x2="5.44" y2="6.26" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="12" y1="12" x2="18.56" y2="6.26" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="12" y1="12" x2="5.44" y2="17.74" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="12" y1="12" x2="18.56" y2="17.74" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="12" y1="12" x2="12" y2="4.29" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="12" y1="12" x2="12" y2="19.71" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Central Hub (white) -->
+  <circle cx="12" cy="12" r="3.0" fill="#ffffff"/>
+  <!-- The 6 outer points (Crimson Red when working) -->
+  <circle cx="5.44" cy="6.26" r="2.4" fill="#ff2b4d"/>
+  <circle cx="18.56" cy="6.26" r="2.4" fill="#ff2b4d"/>
+  <circle cx="5.44" cy="17.74" r="2.4" fill="#ff2b4d"/>
+  <circle cx="18.56" cy="17.74" r="2.4" fill="#ff2b4d"/>
+  <circle cx="12" cy="4.29" r="2.4" fill="#ff2b4d"/>
+  <circle cx="12" cy="19.71" r="2.4" fill="#ff2b4d"/>
+</svg>
