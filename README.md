@@ -22,7 +22,6 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 - **Auto-update** — detects new OmniRoute releases via npm registry.
 - **Start on login** — optional XDG autostart desktop entry.
 - **Doctor & logs** — one-click diagnostics (Node, CLI, DB, loopback auth, server status) and server log viewer.
-- **Flat vector icon** — crisp white hub & spokes with 6 color-changing outer points (red when running, white when stopped).
 
 ## Components
 
