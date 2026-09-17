@@ -15,12 +15,10 @@ Faithfully recreating zoispag/omniroute-tray's UI design and complete feature se
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
 import os
-import re
 import shutil
 import signal
 import socket
@@ -33,24 +31,28 @@ import urllib.parse
 import urllib.request
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import (
-    QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+    QByteArray, QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 )
 from PySide6.QtGui import (
-    QBrush, QColor, QCursor, QFont, QIcon, QPainter, QPen, QPixmap
+    QColor, QCursor, QIcon, QPainter, QPen, QPixmap
 )
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
-    QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QLineEdit, QMenu,
-    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy,
-    QSpinBox, QStackedWidget, QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
+    QApplication, QCheckBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
+    QLabel, QMenu, QMessageBox, QProgressBar, QPushButton, QStackedWidget,
+    QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
 )
+
+try:
+    from PySide6.QtSvg import QSvgRenderer
+except ImportError:  # QtSvg ships in PySide6-Addons; degrade instead of dying at startup
+    QSvgRenderer = None
 
 # ============================================================================
 # Paths & Global Constants
@@ -70,7 +72,12 @@ LOG_FILE = APP_STATE_DIR / "omniroute-tray.log"
 SERVER_LOG_FILE = APP_STATE_DIR / "omniroute-serve.log"
 AUTOSTART_FILE = XDG_CONFIG_HOME / "autostart" / "omniroute-tray.desktop"
 
+OMNIROUTE_HOME = Path.home() / ".omniroute"
+OMNIROUTE_APP_LOG = OMNIROUTE_HOME / "logs" / "application" / "app.log"
+OMNIROUTE_PID_FILE = OMNIROUTE_HOME / "server" / ".pid"
+
 DEFAULT_API_BASE = "http://127.0.0.1:20128"
+DEFAULT_PORT = 20128
 CLI_AUTH_SALT = "omniroute-cli-auth-v1"
 
 
@@ -78,6 +85,16 @@ def ensure_dirs() -> None:
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     APP_STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def log_line(msg: str) -> None:
+    """Append a timestamped line to the tray log. Never raises, never blocks."""
+    try:
+        ensure_dirs()
+        with open(LOG_FILE, "a") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg.rstrip()}\n")
+    except Exception:
+        pass
 
 
 @dataclass
@@ -98,9 +115,20 @@ class Settings:
         if SETTINGS_FILE.exists():
             try:
                 data = json.loads(SETTINGS_FILE.read_text())
-                return Settings(**data)
-            except Exception:
-                pass
+                if not isinstance(data, dict):
+                    raise ValueError(f"expected a JSON object, got {type(data).__name__}")
+                known = {f.name for f in fields(Settings)}
+                unknown = sorted(set(data) - known)
+                if unknown:
+                    # Written by a newer version, or hand-edited: ignore the extras
+                    # rather than resetting the whole file to defaults.
+                    log_line(f"Ignoring unknown settings keys: {', '.join(unknown)}")
+                return Settings(**{k: v for k, v in data.items() if k in known})
+            except Exception as e:
+                # Use defaults in memory but leave the file alone, so a hand-edit
+                # mistake or a partially-written file can still be recovered.
+                log_line(f"Could not read {SETTINGS_FILE} ({e}); using defaults, file left untouched")
+                return Settings()
         s = Settings()
         s.save()
         return s
@@ -156,13 +184,18 @@ def resolve_cli_token() -> Optional[str]:
 # Server Health & Process Lifecycle
 # ============================================================================
 
-def get_port_from_url(url: str) -> int:
+def get_host_port_from_url(url: str) -> Tuple[str, int]:
     try:
-        rest = url.split("://", 1)[-1]
-        _, _, port = rest.partition(":")
-        return int(port.rstrip("/") or "80")
+        parsed = urllib.parse.urlsplit(url if "://" in url else f"//{url}")
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        return host, port
     except Exception:
-        return 20128
+        return "127.0.0.1", DEFAULT_PORT
+
+
+def get_port_from_url(url: str) -> int:
+    return get_host_port_from_url(url)[1]
 
 
 def server_healthy(api_base: str, timeout: float = 1.0) -> bool:
@@ -186,7 +219,7 @@ def reap_zombies() -> None:
             break
 
 
-def force_kill_all(port: int = 20128) -> Tuple[bool, str]:
+def force_kill_all(port: int = DEFAULT_PORT) -> Tuple[bool, str]:
     messages = []
     pids: set[int] = set()
 
@@ -202,35 +235,89 @@ def force_kill_all(port: int = 20128) -> Tuple[bool, str]:
     try:
         res = subprocess.run(["pgrep", "-f", "omniroute serve"], capture_output=True, text=True, timeout=3)
         for tok in res.stdout.strip().split():
-            if tok.isdigit() and int(tok) != os.getpid():
+            if tok.isdigit():
                 pids.add(int(tok))
     except Exception:
         pass
 
-    for pid in pids:
+    # Never target ourselves — and, crucially, never signal our own process
+    # group. `omniroute serve` shares our pgid whenever the daemon was started
+    # from the same session as the tray, so an unguarded killpg would take down
+    # the tray (and the shell that launched it) along with the server.
+    own_pid = os.getpid()
+    try:
+        own_pgid = os.getpgid(0)
+    except Exception:
+        own_pgid = -1
+    pids.discard(own_pid)
+
+    def _signal(pid: int, sig: int) -> None:
         try:
             pgid = os.getpgid(pid)
-            try:
-                os.killpg(pgid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            time.sleep(0.1)
-            try:
-                os.killpg(pgid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            messages.append(f"Killed PID {pid}")
-        except Exception:
-            try:
-                os.kill(pid, signal.SIGKILL)
-                messages.append(f"Killed PID {pid}")
-            except Exception:
-                pass
+        except (ProcessLookupError, PermissionError, OSError):
+            return
+        try:
+            if pgid > 1 and pgid != own_pgid:
+                os.killpg(pgid, sig)
+            else:
+                os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
+    for pid in pids:
+        _signal(pid, signal.SIGTERM)
+        time.sleep(0.1)
+        _signal(pid, signal.SIGKILL)
+        messages.append(f"Killed PID {pid}")
 
     reap_zombies()
     if not messages:
         messages.append(f"Port {port} cleared")
     return True, "; ".join(messages)
+
+
+def cli_force_stop(settings: Settings, port: int) -> None:
+    """Tear down every OmniRoute process and free `port`. Best-effort throughout.
+
+    Shared by the `--stop` and `--restart` subcommands, which previously carried
+    near-identical copies of this sequence. Every step is optional: lsof, fuser,
+    pkill and ss are not guaranteed to be installed, and the CLI may be absent.
+    """
+    for cmd in (
+        [cli_binary(settings), "stop"],
+        ["fuser", "-k", f"{port}/tcp"],
+        ["pkill", "-9", "-f", "omniroute serve"],
+    ):
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=5)
+        except Exception:
+            pass
+
+    try:
+        res = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True, timeout=5)
+        for line in res.stdout.splitlines():
+            if f":{port}" in line and "pid=" in line:
+                part = line.split("pid=")[1].split(",")[0].split(")")[0]
+                try:
+                    os.kill(int(part), signal.SIGKILL)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        if OMNIROUTE_PID_FILE.exists():
+            os.kill(int(OMNIROUTE_PID_FILE.read_text().strip()), signal.SIGKILL)
+    except Exception:
+        pass
+    OMNIROUTE_PID_FILE.unlink(missing_ok=True)
+
+    reap_zombies()
+
+
+def spawn_server_daemon(settings: Settings) -> None:
+    """Start the server as a detached daemon. Raises if the CLI is missing."""
+    subprocess.Popen([*settings.serve_command, "serve", "--daemon"])
 
 
 # ============================================================================
@@ -333,7 +420,6 @@ class WindowQuota:
     used_pct: float
     reset_at: Optional[str] = None
     reset_countdown: str = ""
-    unlimited: bool = False
 
 
 @dataclass
@@ -348,8 +434,6 @@ class HealthStrip:
     active_providers: int = 0
     configured_providers: int = 0
     breakers_open: int = 0
-    p95_ms: Optional[float] = None
-    cache_hit_rate: Optional[float] = None
 
 
 @dataclass
@@ -409,11 +493,9 @@ class FullSnapshot:
     provider_quotas: List[ProviderQuota] = field(default_factory=list)
     cost: Optional[CostData] = None
     trend: Optional[TrendData] = None
-    available_update: Optional[str] = None
     doctor: List[DoctorItem] = field(default_factory=list)
     server_pid: Optional[int] = None
     server_running: bool = False
-    server_port: int = 20128
     autostart_enabled: bool = False
     recent_logs: List[str] = field(default_factory=list)
 
@@ -423,19 +505,58 @@ class FullSnapshot:
 # Telemetry, Quota, Cost, and Trend Fetcher
 # ============================================================================
 
+_JSON_DECODER = json.JSONDecoder()
+_VERSION_CACHE: Dict[str, str] = {}
+
+
 def extract_json_candidate(raw: str) -> Optional[str]:
+    """Return the first embedded JSON document in `raw`.
+
+    The CLI prints banners and warnings ahead of its payload, so scan for the
+    first bracket that actually decodes. `raw_decode` parses in place instead of
+    re-parsing every suffix, keeping this linear in the output size.
+    """
     for i, c in enumerate(raw):
         if c in ("[", "{"):
-            cand = raw[i:]
             try:
-                json.loads(cand)
-                return cand
-            except Exception:
+                _, end = _JSON_DECODER.raw_decode(raw, i)
+            except ValueError:
                 continue
+            return raw[i:end]
     return None
 
 
-def fetch_full_snapshot(settings: Settings) -> FullSnapshot:
+def probe_version(args: List[str]) -> str:
+    """Run `<args> --version`, memoized per process.
+
+    The doctor panel rebuilds on every poll, but a binary's version cannot change
+    while we are running — pay the subprocess spawn once instead of every cycle.
+    """
+    key = " ".join(args)
+    if key not in _VERSION_CACHE:
+        try:
+            _VERSION_CACHE[key] = subprocess.run(
+                [*args, "--version"], capture_output=True, text=True, timeout=3
+            ).stdout.strip()
+        except Exception:
+            _VERSION_CACHE[key] = ""
+    return _VERSION_CACHE[key]
+
+
+def cli_binary(settings: Settings) -> str:
+    """The OmniRoute executable, honoring a custom `serve_command`."""
+    cmd = settings.serve_command or []
+    return cmd[0] if cmd else "omniroute"
+
+
+def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> FullSnapshot:
+    """Collect a full telemetry snapshot.
+
+    `plasmoid_extras` gates the fields that only the Plasma widget consumes:
+    `provider_quotas` (an extra `omniroute usage quota` subprocess) and
+    `recent_logs` (a read of app.log). The tray popover renders neither, so its
+    15s poll passes False and skips both; `--snapshot` leaves it on.
+    """
     base_url = settings.api_base.rstrip("/")
     token = resolve_cli_token()
     headers = {}
@@ -499,7 +620,6 @@ def fetch_full_snapshot(settings: Settings) -> FullSnapshot:
                             used_pct=u_pct,
                             reset_at=reset_at,
                             reset_countdown=countdown,
-                            unlimited=bool(q.get("unlimited", False)),
                         )
                     )
                 if windows:
@@ -512,7 +632,7 @@ def fetch_full_snapshot(settings: Settings) -> FullSnapshot:
     def _fetch_cost() -> Optional[CostData]:
         try:
             c_res = subprocess.run(
-                ["omniroute", "cost", "--period", settings.cost_range, "--group-by", "model", "--output", "json"],
+                [cli_binary(settings), "cost", "--period", settings.cost_range, "--group-by", "model", "--output", "json"],
                 capture_output=True, text=True, timeout=8
             )
             cand = extract_json_candidate(c_res.stdout)
@@ -563,14 +683,25 @@ def fetch_full_snapshot(settings: Settings) -> FullSnapshot:
                 t_cost = 0.0
                 y_cost = 0.0
                 tot = 0.0
+                today_idx: Optional[int] = None
                 for d in arr:
                     dt = d.get("date", "")
                     c = float(d.get("cost", 0) or 0)
                     tok = int(d.get("totalTokens", 0) or 0)
                     tot += c
                     if dt == today_str:
-                        t_cost = c
+                        today_idx = len(pts)
                     pts.append(TrendPoint(date=dt, cost=c, tokens=tok))
+                # `yesterday_cost` feeds the plasmoid's "Yesterday" tile; it used to
+                # be returned as a hardcoded 0.0. The trend is a dense daily series,
+                # so the bucket before today's is yesterday's.
+                if today_idx is not None:
+                    t_cost = pts[today_idx].cost
+                    if today_idx > 0:
+                        y_cost = pts[today_idx - 1].cost
+                elif pts:
+                    # No bucket for today yet, so the newest bucket is yesterday.
+                    y_cost = pts[-1].cost
                 return TrendData(points=pts, today_cost=t_cost, yesterday_cost=y_cost, total_cost=tot)
         except Exception:
             return None
@@ -591,96 +722,91 @@ def fetch_full_snapshot(settings: Settings) -> FullSnapshot:
         snap.cost = f_cost.result()
         snap.trend = f_trend.result()
 
-    # 5. Provider Quotas from CLI
-    try:
-        q_res = subprocess.run(["omniroute", "usage", "quota", "--output", "json"], capture_output=True, text=True, timeout=5)
-        cand = extract_json_candidate(q_res.stdout)
-        if cand:
-            q_data = json.loads(cand)
-            for item in q_data:
-                snap.provider_quotas.append(
-                    ProviderQuota(
-                        provider=item.get("provider", "unknown"),
-                        limit=item.get("limit"),
-                        used=item.get("used"),
-                        remaining=float(item.get("remaining", 100.0) if item.get("remaining") is not None else 100.0),
-                        state=item.get("state", "available"),
+    # 5. Provider Quotas from CLI (consumed only by the plasmoid's snapshot)
+    if plasmoid_extras:
+        try:
+            q_res = subprocess.run(
+                [cli_binary(settings), "usage", "quota", "--output", "json"],
+                capture_output=True, text=True, timeout=5,
+            )
+            cand = extract_json_candidate(q_res.stdout)
+            if cand:
+                q_data = json.loads(cand)
+                for item in q_data:
+                    snap.provider_quotas.append(
+                        ProviderQuota(
+                            provider=item.get("provider", "unknown"),
+                            limit=item.get("limit"),
+                            used=item.get("used"),
+                            remaining=float(item.get("remaining", 100.0) if item.get("remaining") is not None else 100.0),
+                            state=item.get("state", "available"),
+                        )
                     )
-                )
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     # 6. Doctor Diagnostics
     node_bin = shutil.which("node")
     if node_bin:
-        try:
-            node_ver = subprocess.run([node_bin, "--version"], capture_output=True, text=True, timeout=3).stdout.strip()
-        except Exception:
-            node_ver = "unknown"
+        node_ver = probe_version([node_bin]) or "unknown"
         snap.doctor.append(DoctorItem("Node Runtime", "ok", f"{node_ver} ({node_bin})"))
     else:
         snap.doctor.append(DoctorItem("Node Runtime", "fail", "Node binary not found"))
 
-    cli_path = shutil.which("omniroute")
+    cli_path = shutil.which(cli_binary(settings))
     if cli_path:
-        try:
-            cli_ver = subprocess.run([cli_path, "--version"], capture_output=True, text=True, timeout=3).stdout.strip()
-        except Exception:
-            cli_ver = "unknown"
+        cli_ver = probe_version([cli_path]) or "unknown"
         snap.doctor.append(DoctorItem("OmniRoute CLI", "ok", f"{cli_ver} ({cli_path})"))
     else:
-        snap.doctor.append(DoctorItem("OmniRoute CLI", "fail", "omniroute command not found"))
+        snap.doctor.append(DoctorItem("OmniRoute CLI", "fail", f"{cli_binary(settings)} command not found"))
 
-    db_path = Path.home() / ".omniroute" / "storage.sqlite"
+    db_path = OMNIROUTE_HOME / "storage.sqlite"
     if db_path.is_file():
         mb = db_path.stat().st_size / (1024 * 1024)
         snap.doctor.append(DoctorItem("Storage Database", "ok", f"storage.sqlite ({mb:.1f} MB)"))
     else:
         snap.doctor.append(DoctorItem("Storage Database", "fail", "storage.sqlite missing"))
 
-    pid_file = Path.home() / ".omniroute" / "server" / ".pid"
     pid = None
-    if pid_file.is_file():
+    if OMNIROUTE_PID_FILE.is_file():
         try:
-            cand = int(pid_file.read_text().strip())
+            cand = int(OMNIROUTE_PID_FILE.read_text().strip())
             if cand > 0:
                 try:
                     os.kill(cand, 0)
                     pid = cand
                 except (OSError, ProcessLookupError):
-                    pid_file.unlink(missing_ok=True)
+                    OMNIROUTE_PID_FILE.unlink(missing_ok=True)
         except Exception:
-            pid_file.unlink(missing_ok=True)
+            OMNIROUTE_PID_FILE.unlink(missing_ok=True)
 
+    host, port = get_host_port_from_url(settings.api_base)
     port_open = False
     try:
-        with socket.create_connection(("127.0.0.1", 20128), timeout=0.3):
+        with socket.create_connection((host, port), timeout=0.3):
             port_open = True
     except Exception:
         port_open = False
 
     snap.server_pid = pid
     snap.server_running = bool(port_open or (pid is not None))
-    snap.doctor.append(DoctorItem("Server Status", "ok" if snap.server_running else "fail", f"Port 20128 (PID {pid or 'offline'})"))
+    snap.doctor.append(DoctorItem("Server Status", "ok" if snap.server_running else "fail", f"Port {port} (PID {pid or 'offline'})"))
 
     if token:
         snap.doctor.append(DoctorItem("Loopback Token", "ok", f"HMAC-SHA256 active ({token[:10]}…)"))
     else:
         snap.doctor.append(DoctorItem("Loopback Token", "warn", "Unauthenticated loopback"))
 
-    snap.autostart_enabled = (Path.home() / ".config" / "autostart" / "omniroute-tray.desktop").exists()
+    snap.autostart_enabled = AUTOSTART_FILE.exists()
 
-    # 7. Recent Server Logs
-    log_file = Path.home() / ".omniroute" / "logs" / "application" / "app.log"
-    if log_file.is_file():
+    # 7. Recent Server Logs (consumed only by the plasmoid's snapshot)
+    if plasmoid_extras and OMNIROUTE_APP_LOG.is_file():
         try:
-            with open(log_file, "r", errors="ignore") as f:
+            with open(OMNIROUTE_APP_LOG, "r", errors="ignore") as f:
                 lines = f.readlines()
                 snap.recent_logs = [l.strip() for l in lines[-8:] if l.strip()]
         except Exception:
             pass
-
-    snap.available_update = None
 
     return snap
 
@@ -718,6 +844,8 @@ class ServerSupervisor:
         self._on_log = on_log
         self._lock = threading.RLock()
         self._stop_requested = threading.Event()
+        self._stopped = threading.Event()
+        self._stopped.set()
 
     @property
     def state(self) -> ServerState:
@@ -741,8 +869,9 @@ class ServerSupervisor:
             threading.Thread(target=self._run_start, daemon=True).start()
 
     def _run_start(self) -> None:
+        self._stopped.clear()
         port = get_port_from_url(self.settings.api_base)
-        if server_healthy(self.settings.api_base):
+        if self.settings.adopt_existing and server_healthy(self.settings.api_base):
             self._set_state(ServerState.ADOPTED)
             self._log(f"Adopted running instance on port {port}")
             return
@@ -752,7 +881,10 @@ class ServerSupervisor:
         SERVER_LOG_FILE.touch(exist_ok=True)
 
         try:
-            subprocess.run(["omniroute", "serve", "--daemon"], capture_output=True, text=True, timeout=12)
+            subprocess.run(
+                [*self.settings.serve_command, "serve", "--daemon"],
+                capture_output=True, text=True, timeout=12,
+            )
         except Exception as e:
             self._log(f"Error starting daemon: {e}")
 
@@ -764,35 +896,50 @@ class ServerSupervisor:
                 return
             time.sleep(0.8)
 
-        if server_healthy(self.settings.api_base):
-            self._set_state(ServerState.RUNNING)
-        else:
-            self._set_state(ServerState.STOPPED)
+        self._set_state(ServerState.STOPPED)
 
     def stop(self) -> None:
         with self._lock:
             self._stop_requested.set()
+            self._stopped.clear()
             self._set_state(ServerState.STOPPING)
         threading.Thread(target=self._run_stop, daemon=True).start()
 
-    def _run_stop(self) -> None:
-        try:
-            subprocess.run(["omniroute", "stop"], capture_output=True, text=True, timeout=8)
-        except Exception:
-            pass
+    def wait_stopped(self, timeout: float = 5.0) -> bool:
+        """Block until the stop sequence finishes. Returns False on timeout."""
+        return self._stopped.wait(timeout)
 
-        # If still holding port, escalate
-        port = get_port_from_url(self.settings.api_base)
-        if server_healthy(self.settings.api_base):
-            force_kill_all(port)
-
-        reap_zombies()
+    def mark_stopped(self) -> None:
+        """Record a teardown that happened outside stop(), e.g. force-stop."""
+        self._stopped.set()
         self._set_state(ServerState.STOPPED)
 
+    def _run_stop(self) -> None:
+        try:
+            try:
+                subprocess.run([*self.settings.serve_command, "stop"], capture_output=True, text=True, timeout=8)
+            except Exception:
+                pass
+
+            # If still holding port, escalate
+            port = get_port_from_url(self.settings.api_base)
+            if server_healthy(self.settings.api_base):
+                force_kill_all(port)
+
+            reap_zombies()
+            self._set_state(ServerState.STOPPED)
+        finally:
+            self._stopped.set()
+
     def restart(self) -> None:
-        self.stop()
+        # Never sleep on the GUI thread — the Qt menu action calls this directly.
+        threading.Thread(target=self._run_restart, daemon=True).start()
+
+    def _run_restart(self) -> None:
+        self._stopped.clear()
+        self._run_stop()
         time.sleep(1.0)
-        self.start()
+        self._run_start()
 
 
 # ============================================================================
@@ -848,24 +995,43 @@ def render_omniroute_pixmap(state: str, size: int = 64) -> QPixmap:
     return pm
 
 
+_TRAY_ICON_CACHE: Dict[str, QIcon] = {}
+
+
 def get_tray_icon(state: str = "stopped") -> QIcon:
-    icon = QIcon()
-    for sz in (16, 22, 24, 32, 48, 64, 128):
-        icon.addPixmap(render_omniroute_pixmap(state, sz))
-    return icon
+    """7 rasterizations per state; build each state's icon once, not per repaint."""
+    if state not in _TRAY_ICON_CACHE:
+        icon = QIcon()
+        for sz in (16, 22, 24, 32, 48, 64, 128):
+            icon.addPixmap(render_omniroute_pixmap(state, sz))
+        _TRAY_ICON_CACHE[state] = icon
+    return _TRAY_ICON_CACHE[state]
 
 
 # ============================================================================
 # Autostart Helpers
 # ============================================================================
 
+def tray_executable() -> str:
+    """How a desktop session should relaunch this tray."""
+    installed = shutil.which(APP_ID)
+    if installed:
+        return installed
+    script = Path(__file__).resolve()
+    if script.is_file():
+        return str(script)
+    return str(Path.home() / ".local" / "bin" / APP_ID)
+
+
 def autostart_enable() -> None:
     AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
+    exe = tray_executable()
+    exec_line = f'"{exe}"' if " " in exe else exe
     content = f"""[Desktop Entry]
 Type=Application
 Name=OmniRoute Tray
 Comment=System tray supervisor and monitor for OmniRoute AI router
-Exec={Path.home()}/.local/bin/omniroute-tray
+Exec={exec_line}
 Icon=omniroute-tray
 Terminal=false
 Categories=Utility;Development;Network;
@@ -1065,6 +1231,9 @@ QPushButton.action-btn.danger:hover {
     background-color: rgba(239, 68, 68, 0.28);
 }
 """
+
+
+GITHUB_MARK_SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#a1a1aa"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>'
 
 
 class OmniRoutePopover(QWidget):
@@ -1344,8 +1513,8 @@ class OmniRoutePopover(QWidget):
         app_lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
         fl.addWidget(app_lbl)
 
-        btn_port = QPushButton(":20128")
-        btn_port.setStyleSheet("""
+        self.btn_port = QPushButton(f":{get_port_from_url(self.tray_app.settings.api_base)}")
+        self.btn_port.setStyleSheet("""
             QPushButton {
                 font-family: monospace;
                 font-size: 10px;
@@ -1360,8 +1529,8 @@ class OmniRoutePopover(QWidget):
                 border-color: #ff453a;
             }
         """)
-        btn_port.clicked.connect(lambda: webbrowser.open(self.tray_app.settings.api_base))
-        fl.addWidget(btn_port)
+        self.btn_port.clicked.connect(lambda: webbrowser.open(self.tray_app.settings.api_base))
+        fl.addWidget(self.btn_port)
 
         fl.addStretch()
 
@@ -1390,8 +1559,11 @@ class OmniRoutePopover(QWidget):
             }
         """)
         github_icon = self._make_github_icon()
-        btn_help.setIcon(github_icon)
-        btn_help.setIconSize(QSize(16, 16))
+        if github_icon.isNull():
+            btn_help.setText("GH")
+        else:
+            btn_help.setIcon(github_icon)
+            btn_help.setIconSize(QSize(16, 16))
         btn_help.clicked.connect(lambda: webbrowser.open("https://github.com/diegosouzapw/OmniRoute"))
         fl.addWidget(btn_help)
 
@@ -1412,15 +1584,13 @@ class OmniRoutePopover(QWidget):
         """)
 
     def _make_github_icon(self) -> QIcon:
+        if QSvgRenderer is None:  # PySide6-Essentials only; caller falls back to text
+            return QIcon()
         pm = QPixmap(16, 16)
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing, True)
-        from PySide6.QtSvg import QSvgRenderer
-        from PySide6.QtCore import QByteArray
-        svg_data = QByteArray(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#a1a1aa"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>')
-        renderer = QSvgRenderer(svg_data)
-        renderer.render(p)
+        QSvgRenderer(QByteArray(GITHUB_MARK_SVG)).render(p)
         p.end()
         return QIcon(pm)
 
@@ -1490,29 +1660,43 @@ class OmniRoutePopover(QWidget):
         self.tray_app.settings.save()
 
     def _refresh_doctor_box(self):
+        """Render diagnostics from the last snapshot.
+
+        Deliberately does no probing: this runs on the GUI thread when the
+        Settings view opens, and a synchronous health check freezes the popover
+        for up to a second. The background poller already ran every one of these
+        checks; `_local_doctor_rows` covers the window before the first snapshot.
+        """
         while self.doctor_box.count():
             it = self.doctor_box.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
 
-        node_bin = shutil.which("node") or "missing"
-        cli_bin = shutil.which("omniroute") or "missing"
-        mid = get_raw_machine_id() or "missing"
-        port = get_port_from_url(self.tray_app.settings.api_base)
-        alive = server_healthy(self.tray_app.settings.api_base)
+        snap = self.tray_app._last_snap
+        if snap and snap.doctor:
+            rows = [(d.name, d.status, d.detail) for d in snap.doctor]
+        else:
+            rows = self._local_doctor_rows()
 
-        checks = [
-            ("Node Runtime", True if node_bin != "missing" else False, node_bin),
-            ("OmniRoute CLI", True if cli_bin != "missing" else False, cli_bin),
-            ("Loopback Auth Token", True if mid != "missing" else False, f"Machine ID: {mid[:8]}…"),
-            ("Server Status", alive, f"Port {port} ({'healthy' if alive else 'inactive'})"),
-        ]
-
-        for label, ok, detail in checks:
-            mark = "<span style='color:#22c55e;'>✔</span>" if ok else "<span style='color:#ef4444;'>✘</span>"
-            lbl = QLabel(f"{mark} <b>{label}</b>: <span style='color:#6b7280;'>{detail}</span>")
+        for name, status, detail in rows:
+            mark = "<span style='color:#22c55e;'>✔</span>" if status == "ok" else "<span style='color:#ef4444;'>✘</span>"
+            lbl = QLabel(f"{mark} <b>{name}</b>: <span style='color:#6b7280;'>{detail}</span>")
             lbl.setStyleSheet("font-size: 11px;")
             self.doctor_box.addWidget(lbl)
+
+    def _local_doctor_rows(self) -> List[Tuple[str, str, str]]:
+        """Filesystem-only checks, for before the first snapshot arrives."""
+        node_bin = shutil.which("node")
+        cli_bin = shutil.which(cli_binary(self.tray_app.settings))
+        mid = get_raw_machine_id()
+        port = get_port_from_url(self.tray_app.settings.api_base)
+        return [
+            ("Node Runtime", "ok" if node_bin else "fail", node_bin or "binary not found"),
+            ("OmniRoute CLI", "ok" if cli_bin else "fail", cli_bin or "command not found"),
+            ("Loopback Auth Token", "ok" if mid else "fail",
+             f"Machine ID: {mid[:8]}…" if mid else "machine-id unreadable"),
+            ("Server Status", "warn", f"Port {port} (checking…)"),
+        ]
 
     def render_snapshot(self, snap: FullSnapshot):
         mode_used = (self.tray_app.settings.percent_mode == "used")
@@ -1707,6 +1891,7 @@ class TrayApp:
         self.bridge.update_available.connect(self._on_update_available)
 
         self._polling_active = False
+        self._poll_lock = threading.Lock()
         self._last_snap: Optional[FullSnapshot] = None
 
         self.supervisor = ServerSupervisor(
@@ -1784,19 +1969,23 @@ class TrayApp:
             QTimer.singleShot(800, self._poll_data)
 
     def _poll_data(self):
-        if self._polling_active:
-            return
-        self._polling_active = True
+        with self._poll_lock:
+            if self._polling_active:
+                return
+            self._polling_active = True
         threading.Thread(target=self._async_fetch, daemon=True).start()
 
     def _async_fetch(self):
         try:
-            snap = fetch_full_snapshot(self.settings)
+            # plasmoid_extras=False: the popover renders neither provider_quotas
+            # nor recent_logs, so its poll skips that subprocess and file read.
+            snap = fetch_full_snapshot(self.settings, plasmoid_extras=False)
             self.bridge.snapshot_ready.emit(snap)
         except Exception as e:
             self.bridge.log_line.emit(f"Fetch error: {e}")
         finally:
-            self._polling_active = False
+            with self._poll_lock:
+                self._polling_active = False
 
     def _on_snapshot_ready(self, snap: FullSnapshot):
         self._last_snap = snap
@@ -1807,7 +1996,7 @@ class TrayApp:
 
     def _async_check_update(self):
         try:
-            res = subprocess.run(["omniroute", "--version"], capture_output=True, text=True)
+            res = subprocess.run([cli_binary(self.settings), "--version"], capture_output=True, text=True)
             installed = res.stdout.strip()
             req = urllib.request.Request("https://registry.npmjs.org/omniroute/latest")
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -1827,32 +2016,42 @@ class TrayApp:
         )
 
     def _force_stop_clicked(self):
+        port = get_port_from_url(self.settings.api_base)
         resp = QMessageBox.question(
             None, "Force-stop OmniRoute",
-            "This will terminate all OmniRoute process groups and clear port 20128.\n\nProceed?",
+            f"This will terminate all OmniRoute process groups and clear port {port}.\n\nProceed?",
         )
         if resp != QMessageBox.Yes:
             return
-        ok, msg = force_kill_all(get_port_from_url(self.settings.api_base))
+        ok, msg = force_kill_all(port)
         self._append_log(f"Force-stop: {msg}")
         self.tray.showMessage("OmniRoute Tray", msg, QSystemTrayIcon.Information, 4000)
-        self.supervisor._set_state(ServerState.STOPPED)
+        self.supervisor.mark_stopped()
 
     def _open_logs(self):
+        """Open the server's own log, which is what the doctor panel reads.
+
+        The tray never captures daemon stdout (the supervisor runs `serve` with
+        capture_output=True), so SERVER_LOG_FILE is only a fallback for the case
+        where the server has not written its log yet.
+        """
         ensure_dirs()
-        SERVER_LOG_FILE.touch(exist_ok=True)
+        target = OMNIROUTE_APP_LOG if OMNIROUTE_APP_LOG.is_file() else SERVER_LOG_FILE
+        target.touch(exist_ok=True)
         try:
-            subprocess.Popen(["xdg-open", str(SERVER_LOG_FILE)])
+            subprocess.Popen(["xdg-open", str(target)])
         except Exception:
-            webbrowser.open(f"file://{SERVER_LOG_FILE}")
+            webbrowser.open(f"file://{target}")
 
     def _append_log(self, msg: str):
-        ensure_dirs()
-        with open(LOG_FILE, "a") as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg.rstrip()}\n")
+        log_line(msg)
 
     def _quit(self):
+        # stop() is async, so wait for it: otherwise the process can exit
+        # mid-teardown and leave the daemon running or half-signalled.
         self.supervisor.stop()
+        if not self.supervisor.wait_stopped(timeout=5.0):
+            log_line("Stop did not finish within 5s; quitting anyway")
         self.app.quit()
 
     def run(self):
@@ -1861,85 +2060,52 @@ class TrayApp:
 
 def main():
     if "--stop" in sys.argv:
-        subprocess.run(["omniroute", "stop"], capture_output=True, timeout=5)
-        subprocess.run(["fuser", "-k", "20128/tcp"], capture_output=True)
-        subprocess.run(["pkill", "-9", "-f", "omniroute serve"], capture_output=True)
-        res = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True)
-        for line in res.stdout.splitlines():
-            if ":20128" in line and "pid=" in line:
-                part = line.split("pid=")[1].split(",")[0].split(")")[0]
-                try:
-                    os.kill(int(part), signal.SIGKILL)
-                except Exception:
-                    pass
-        pid_file = Path.home() / ".omniroute" / "server" / ".pid"
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
-            pid_file.unlink(missing_ok=True)
+        settings = Settings.load()
+        cli_force_stop(settings, get_port_from_url(settings.api_base))
         print("STOPPED")
         sys.exit(0)
 
     if "--start" in sys.argv:
-        subprocess.Popen(["omniroute", "serve", "--daemon"])
+        settings = Settings.load()
+        try:
+            spawn_server_daemon(settings)
+        except Exception as e:
+            print(f"ERROR: could not start server: {e}", file=sys.stderr)
+            sys.exit(1)
         print("STARTED")
         sys.exit(0)
 
     if "--restart" in sys.argv:
-        subprocess.run(["omniroute", "stop"], capture_output=True, timeout=5)
-        subprocess.run(["fuser", "-k", "20128/tcp"], capture_output=True)
-        subprocess.run(["pkill", "-9", "-f", "omniroute serve"], capture_output=True)
-        res = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True)
-        for line in res.stdout.splitlines():
-            if ":20128" in line and "pid=" in line:
-                part = line.split("pid=")[1].split(",")[0].split(")")[0]
-                try:
-                    os.kill(int(part), signal.SIGKILL)
-                except Exception:
-                    pass
-        pid_file = Path.home() / ".omniroute" / "server" / ".pid"
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
-            pid_file.unlink(missing_ok=True)
+        settings = Settings.load()
+        cli_force_stop(settings, get_port_from_url(settings.api_base))
         time.sleep(1.0)
-        subprocess.Popen(["omniroute", "serve", "--daemon"])
+        try:
+            spawn_server_daemon(settings)
+        except Exception as e:
+            print(f"ERROR: could not restart server: {e}", file=sys.stderr)
+            sys.exit(1)
         print("RESTARTED")
         sys.exit(0)
 
     if "--toggle-autostart" in sys.argv:
-        p = Path.home() / ".config" / "autostart" / "omniroute-tray.desktop"
-        if p.exists():
-            p.unlink()
+        # Same helpers the Settings checkbox uses, so the two entry points can
+        # no longer disagree about what the desktop file should contain.
+        if autostart_is_enabled():
+            autostart_disable()
             print("AUTOSTART_DISABLED")
         else:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text("""[Desktop Entry]
-Type=Application
-Name=OmniRoute Tray
-Exec=/home/susan/.local/bin/omniroute-tray
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-""")
+            autostart_enable()
             print("AUTOSTART_ENABLED")
         sys.exit(0)
 
     if "--snapshot" in sys.argv:
-        settings = Settings()
+        settings = Settings.load()
         if "--period" in sys.argv:
             idx = sys.argv.index("--period")
             if idx + 1 < len(sys.argv):
                 settings.cost_range = sys.argv[idx + 1]
         snap = fetch_full_snapshot(settings)
-        import dataclasses
-        print(json.dumps(dataclasses.asdict(snap)))
+        print(json.dumps(asdict(snap)))
         sys.exit(0)
 
     app = TrayApp()

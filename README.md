@@ -33,6 +33,8 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 | `omniroute.svg` | App icon (white) |
 | `omniroute_red.svg` | App icon (red, running state) |
 
+> **Note**: This project was ported by [[Susanthakuri92]] to Linux. The tray app uses a native PySide6 system-tray icon and a QML-integrated popover card; the plasmoid is a native KDE Plasma 6 widget wrapper.
+
 ## Install
 
 ### System Tray App (PySide6)
@@ -40,12 +42,11 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 **Requirements:** Python 3.10+, PySide6, OmniRoute CLI
 
 ```sh
-# Install PySide6
+# Ensure dependencies
 pip install PySide6
 
-# Copy the tray app
-cp omniroute_tray.py ~/.local/bin/omniroute-tray
-chmod +x ~/.local/bin/omniroute-tray
+# Install to user bin
+install -m 755 omniroute_tray.py ~/.local/bin/omniroute-tray
 
 # Run
 omniroute-tray
@@ -55,35 +56,37 @@ omniroute-tray
 
 ```sh
 # Install the plasmoid
+mkdir -p ~/.local/share/plasma/plasmoids/
 cp -r org.omniroute.plasmoid ~/.local/share/plasma/plasmoids/
 
-# Restart Plasma to detect it
+# Reload the desktop shell to detect the widget
+kquitapp6 plasmashell || killall plasmashell
 plasmashell --replace &
 ```
 
-Then add the "OmniRoute" widget to your panel via right-click → Add Widgets.
+Then add the "OmniRoute" widget to your panel: Right-click panel → **Add Widgets** → Search "OmniRoute".
 
 ### CLI Shortcuts
 
+The tray app doubles as a CLI tool for external automation:
+
 ```sh
-omniroute-tray --start       # Start the OmniRoute server daemon
-omniroute-tray --stop        # Stop all OmniRoute processes
-omniroute-tray --restart     # Restart the server
-omniroute-tray --snapshot    # Dump full telemetry snapshot as JSON
-omniroute-tray --toggle-autostart  # Toggle start-on-login
+omniroute-tray --start       # Start server daemon
+omniroute-tray --stop        # Stop all server processes
+omniroute-tray --restart     # Restart daemon
+omniroute-tray --snapshot    # JSON telemetry dump
+omniroute-tray --toggle-autostart  # Toggle launch-on-login
 ```
 
 ## How it works
 
-- The tray app supervises `omniroute serve --daemon`, adopting an already-running instance if one is detected on port 20128.
-- It shares your existing `~/.omniroute/` config and database.
-- Server data (quotas, cost, health) is read via the OmniRoute CLI (`--output json`) and HTTP API on `127.0.0.1:20128`.
-- Loopback authentication uses HMAC-SHA256 derived from `/etc/machine-id` (or `~/.omniroute/.env` token).
-- The Plasma widget delegates server lifecycle and data fetching to `omniroute-tray` CLI commands.
+- The supervisor adopts `omniroute serve` if running on port 20128, or launches it.
+- **Loopback**: Authenticated via `/etc/machine-id` HMAC-SHA256.
+- **Plasmoid**: A thin frontend that invokes `omniroute-tray --snapshot` every 30s.
 
 ## Configuration
 
-Settings are stored in `~/.config/omniroute-tray/settings.json`:
+Settings live in `~/.config/omniroute-tray/settings.json`. The tray manages these internally via its Settings view.
 
 ```json
 {
