@@ -37,22 +37,32 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import (
-    QByteArray, QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
-)
-from PySide6.QtGui import (
-    QColor, QCursor, QIcon, QPainter, QPalette, QPen, QPixmap
-)
-from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
-    QLabel, QMenu, QMessageBox, QProgressBar, QPushButton, QStackedWidget,
-    QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
-)
-
+PYSIDE_AVAILABLE = False
 try:
-    from PySide6.QtSvg import QSvgRenderer
-except ImportError:  # QtSvg ships in PySide6-Addons; degrade instead of dying at startup
-    QSvgRenderer = None
+    from PySide6.QtCore import (
+        QByteArray, QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+    )
+    from PySide6.QtGui import (
+        QColor, QCursor, QIcon, QPainter, QPalette, QPen, QPixmap
+    )
+    from PySide6.QtWidgets import (
+        QApplication, QCheckBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
+        QLabel, QMenu, QMessageBox, QProgressBar, QPushButton, QStackedWidget,
+        QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
+    )
+    try:
+        from PySide6.QtSvg import QSvgRenderer
+    except ImportError:
+        QSvgRenderer = None
+    PYSIDE_AVAILABLE = True
+except ImportError:
+    class QWidget: pass
+    class QObject: pass
+    def Signal(*args):
+        class _DummySignal:
+            def connect(self, *a, **k): pass
+            def emit(self, *a, **k): pass
+        return _DummySignal()
 
 # ============================================================================
 # Paths & Global Constants
@@ -2365,6 +2375,15 @@ def main():
         snap = fetch_full_snapshot(settings)
         print(json.dumps(asdict(snap)))
         sys.exit(0)
+
+    if not PYSIDE_AVAILABLE:
+        print("\n[!] OmniRoute Tray requires PySide6 for standalone desktop mode.", file=sys.stderr)
+        print("    Install it with your distribution package manager:\n", file=sys.stderr)
+        print("    • Arch Linux / CachyOS: sudo pacman -S python-pyside6", file=sys.stderr)
+        print("    • Ubuntu / Debian:       sudo apt install python3-pyside6", file=sys.stderr)
+        print("    • Fedora:                sudo dnf install python3-pyside6", file=sys.stderr)
+        print("    • Or via pip:            pip install PySide6\n", file=sys.stderr)
+        sys.exit(1)
 
     app = TrayApp()
     sys.exit(app.run())

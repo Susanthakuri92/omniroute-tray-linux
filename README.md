@@ -52,9 +52,9 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 
 ## Installation
 
-### ⚡ Quick One-Line Install (All Desktops & Distributions)
+### ⚡ Quick One-Line Install
 
-Run this single command in your terminal to automatically install the CLI binary, register the KDE Plasma 6 widget, and configure desktop application shortcuts:
+Run this single command in your terminal to automatically download the files, link the CLI binary, register the KDE Plasma 6 widget, and configure desktop application shortcuts:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/main/install.sh | bash
@@ -70,7 +70,18 @@ wget -qO- https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/
 > - Symlinks the CLI executable to `~/.local/bin/omniroute-tray`
 > - Registers the KDE Plasma 6 Plasmoid to `~/.local/share/plasma/plasmoids/`
 > - Generates a `.desktop` application menu launcher with official brand icons
-> - Clears QML caches and safely reloads Plasma Shell if running
+> - Detects your desktop environment and safely reloads Plasma Shell if active
+
+#### Desktop Compatibility & Requirements
+
+| Desktop Environment | Interface | Compatibility | Requirements |
+| :--- | :--- | :--- | :--- |
+| **KDE Plasma 6** | Native QML Plasmoid | **100% Out-of-the-Box** | Standard Python 3 (included with all distros) |
+| **XFCE, Cinnamon, MATE, LXQt** | Standalone PySide6 Tray | **Supported** | `python3-pyside6` package |
+| **i3, Sway, Hyprland** | Status Bar Tray (Waybar) | **Supported** | `python3-pyside6` + bar `tray` module |
+| **GNOME Desktop** | Standalone PySide6 Tray | **Supported** | `python3-pyside6` + [AppIndicator Extension](https://extensions.gnome.org/extension/615/appindicator-support/)* |
+
+*\* Note: GNOME Shell disabled system tray icons by default. Ubuntu includes the AppIndicator extension pre-installed; on Fedora or Arch GNOME, install `gnome-shell-extension-appindicator`.*
 
 ---
 

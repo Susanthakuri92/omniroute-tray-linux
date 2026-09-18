@@ -136,20 +136,30 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo -e "  ${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
 fi
 
-# 7. Check PySide6 guidance if missing
-if [ "${PYSIDE_INSTALLED}" -eq 0 ]; then
-    log_warn "PySide6 is not detected. Standalone tray requires PySide6."
-    echo -e "  Install it using your distribution package manager:"
-    echo -e "  • Arch Linux:    ${BOLD}sudo pacman -S python-pyside6${RESET}"
-    echo -e "  • Ubuntu/Debian: ${BOLD}sudo apt install python3-pyside6${RESET}"
-    echo -e "  • Fedora:        ${BOLD}sudo dnf install python3-pyside6${RESET}"
-    echo -e "  • Or via pip:    ${BOLD}pip install PySide6${RESET}\n"
+# 7. Desktop Environment & Dependency Checks
+IS_KDE=0
+if pgrep -x "plasmashell" &>/dev/null || [[ "${XDG_CURRENT_DESKTOP:-}" == *"KDE"* ]]; then
+    IS_KDE=1
+    log_success "KDE Plasma 6 detected! Native Plasmoid registered (runs with standard Python 3, PySide6 not required)."
+    systemctl --user restart plasma-plasmashell 2>/dev/null || true
 fi
 
-# 8. Reload Plasma if active
-if pgrep -x "plasmashell" &>/dev/null; then
-    log_info "KDE Plasma detected. Reloading shell to register widget..."
-    systemctl --user restart plasma-plasmashell 2>/dev/null || true
+if [ "${IS_KDE}" -eq 0 ]; then
+    # Non-KDE desktops use the PySide6 standalone tray
+    if [ "${PYSIDE_INSTALLED}" -eq 0 ]; then
+        log_warn "PySide6 is not detected. Standalone system tray mode requires PySide6."
+        echo -e "  Install it using your distribution package manager:"
+        echo -e "  • Arch / CachyOS: ${BOLD}sudo pacman -S python-pyside6${RESET}"
+        echo -e "  • Ubuntu / Debian: ${BOLD}sudo apt install python3-pyside6${RESET}"
+        echo -e "  • Fedora:          ${BOLD}sudo dnf install python3-pyside6${RESET}"
+        echo -e "  • Or via pip:      ${BOLD}pip install PySide6${RESET}\n"
+    fi
+
+    if [[ "${XDG_CURRENT_DESKTOP:-}" == *"GNOME"* ]]; then
+        log_info "GNOME Shell detected."
+        echo -e "  ${YELLOW}!${RESET} GNOME requires the ${BOLD}AppIndicator${RESET} extension to display tray icons in the top bar."
+        echo -e "    Ubuntu includes this by default. On Fedora/Debian/Arch: ${BOLD}sudo apt/dnf/pacman install gnome-shell-extension-appindicator${RESET}\n"
+    fi
 fi
 
 echo -e "\n${GREEN}${BOLD}Installation completed successfully!${RESET}\n"
