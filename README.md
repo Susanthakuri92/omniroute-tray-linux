@@ -72,16 +72,17 @@ wget -qO- https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/
 > - Generates a `.desktop` application menu launcher with official brand icons
 > - Detects your desktop environment and safely reloads Plasma Shell if active
 
-#### Desktop Compatibility & Requirements
+#### Desktop Compatibility & Distribution Matrix
 
-| Desktop Environment | Interface | Compatibility | Requirements |
-| :--- | :--- | :--- | :--- |
-| **KDE Plasma 6** | Native QML Plasmoid | **100% Out-of-the-Box** | Standard Python 3 (included with all distros) |
-| **XFCE, Cinnamon, MATE, LXQt** | Standalone PySide6 Tray | **Supported** | `python3-pyside6` package |
-| **i3, Sway, Hyprland** | Status Bar Tray (Waybar) | **Supported** | `python3-pyside6` + bar `tray` module |
-| **GNOME Desktop** | Standalone PySide6 Tray | **Supported** | `python3-pyside6` + [AppIndicator Extension](https://extensions.gnome.org/extension/615/appindicator-support/)* |
-
-*\* Note: GNOME Shell disabled system tray icons by default. Ubuntu includes the AppIndicator extension pre-installed; on Fedora or Arch GNOME, install `gnome-shell-extension-appindicator`.*
+| Distribution & Desktop | Status | What happens with the 1-Line Command | Extra Steps Needed? |
+| :--- | :---: | :--- | :--- |
+| **CachyOS / Arch Linux (KDE Plasma 6)** | 🟢 | Registers native widget, links CLI, reloads Plasma | **None! 100% Zero-touch out of the box.** |
+| **Fedora KDE / openSUSE / KDE Neon** | 🟢 | Registers native widget, links CLI, reloads Plasma | **None! 100% Zero-touch out of the box.** |
+| **Ubuntu Desktop (22.04 / 24.04)** | 🟡 | Installs files, links CLI, creates app launcher | `sudo apt install python3-pyside6` (Ubuntu includes AppIndicator by default) |
+| **Linux Mint (Cinnamon, MATE, XFCE)** | 🟡 | Installs files, links CLI, creates app launcher | `sudo apt install python3-pyside6` |
+| **Debian (XFCE / MATE / Cinnamon)** | 🟡 | Installs files, links CLI, creates app launcher | `sudo apt install python3-pyside6` |
+| **Fedora Workstation (GNOME)** | 🟡 | Installs files, links CLI, creates app launcher | `sudo dnf install python3-pyside6 gnome-shell-extension-appindicator` |
+| **Arch / CachyOS (Hyprland / Sway / i3)** | 🟡 | Installs files, links CLI, creates app launcher | `sudo pacman -S python-pyside6` + add `"tray"` module to Waybar |
 
 ---
 
