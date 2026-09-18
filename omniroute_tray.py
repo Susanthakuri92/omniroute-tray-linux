@@ -553,6 +553,7 @@ def get_tray_repo_dir() -> Optional[Path]:
     """Find the root of the git repository for OmniRoute Tray."""
     candidates = [
         Path(__file__).resolve().parent,
+        Path.home() / ".local" / "share" / "omniroute-tray",
         Path.home() / ".local" / "bin" / "omniroute-tray",
         Path.home() / "Projects" / "Omniroute-tray",
         Path.home() / "Omniroute-tray",

@@ -52,7 +52,31 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 
 ## Installation
 
-### Option 1: KDE Plasma 6 (Native Plasmoid Widget)
+### ⚡ Quick One-Line Install (All Desktops & Distributions)
+
+Run this single command in your terminal to automatically install the CLI binary, register the KDE Plasma 6 widget, and configure desktop application shortcuts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/main/install.sh | bash
+```
+
+*Or with `wget`:*
+```bash
+wget -qO- https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/main/install.sh | bash
+```
+
+> **What this does automatically:**
+> - Clones or updates the repository in `~/.local/share/omniroute-tray`
+> - Symlinks the CLI executable to `~/.local/bin/omniroute-tray`
+> - Registers the KDE Plasma 6 Plasmoid to `~/.local/share/plasma/plasmoids/`
+> - Generates a `.desktop` application menu launcher with official brand icons
+> - Clears QML caches and safely reloads Plasma Shell if running
+
+---
+
+### Manual Installation by Desktop Environment
+
+#### Option 1: KDE Plasma 6 (Native Plasmoid Widget)
 
 If you use KDE Plasma 6, install the native QML plasmoid for the best desktop experience:
 
@@ -80,7 +104,7 @@ systemctl --user restart plasma-plasmashell
 
 ---
 
-### Option 2: GNOME Desktop (Ubuntu, Fedora, Debian, Arch)
+#### Option 2: GNOME Desktop (Ubuntu, Fedora, Debian, Arch)
 
 GNOME displays system tray icons via the AppIndicator protocol.
 
@@ -119,7 +143,7 @@ omniroute-tray &
 
 ---
 
-### Option 3: XFCE, Cinnamon, MATE, LXQt
+#### Option 3: XFCE, Cinnamon, MATE, LXQt
 
 These desktop environments support system tray icons natively without extra extensions.
 
@@ -136,7 +160,7 @@ omniroute-tray &
 
 ---
 
-### Option 4: Tiling Window Managers (i3, Sway, Hyprland)
+#### Option 4: Tiling Window Managers (i3, Sway, Hyprland)
 
 The tray runs seamlessly on standalone status bars (such as **Waybar**, **Polybar**, **tint2**, or **trayer**).
 
@@ -286,6 +310,7 @@ Omniroute-tray/
 │   ├── Screenshot_20260917_160202.png # Server View
 │   ├── Screenshot_20260917_160218.png # Monitor View
 │   └── Screenshot_20260917_160230.png # Doctor & Logs View
+├── install.sh                      # Universal one-line installer script
 ├── omniroute.svg                   # Canonical app icon (white)
 ├── omniroute_red.svg               # Canonical app icon (light red)
 ├── omniroute_white.svg             # Canonical app icon (white)
