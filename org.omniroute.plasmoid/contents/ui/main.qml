@@ -63,7 +63,7 @@ PlasmoidItem {
     // STATE PROPERTIES
     // ========================================================================
     property bool isRunning: false
-    property string serverVersion: "v3.8.50"
+    property string serverVersion: "unknown"
     property int serverPid: 0
     property string serverActionState: "" // "", "starting", "stopping", "restarting"
 
@@ -90,10 +90,21 @@ PlasmoidItem {
     property var doctorModel: []
     property var recentLogsModel: []
     property bool autostartEnabled: false
-    property string updateStatus: "Up to date (v3.8.50)"
-    property string trayUpdateStatus: "GitHub (main)"
+    property string updateStatus: "Up to date (unknown)"
+    property string trayUpdateStatus: "unknown"
     property bool isUpdatingTray: false
     property bool isCheckingUpdate: false
+    // New state for updates
+    property string trayVersion: "unknown"
+    property string trayCommit: "unknown"
+    property bool serverUpdateAvailable: false
+    property string serverLatestVersion: ""
+    property string updateLastChecked: ""
+    property string trayUpdateLastChecked: ""
+    property bool updateError: false
+    property string updateErrorMsg: ""
+    property bool trayUpdateError: false
+    property string trayUpdateErrorMsg: ""
 
 
     // ========================================================================
@@ -110,6 +121,7 @@ PlasmoidItem {
 
             if (sourceName.indexOf("--update-tray") !== -1) {
                 root.isUpdatingTray = false;
+                root.trayUpdateLastChecked = new Date().toLocaleTimeString();
                 var stderr = data["stderr"] || "";
                 try {
                     var start = stdout.indexOf("{");
@@ -117,15 +129,28 @@ PlasmoidItem {
                     if (start !== -1 && end !== -1) {
                         var parsed = JSON.parse(stdout.substring(start, end + 1));
                         root.trayUpdateStatus = parsed.message || (parsed.success ? "Updated!" : "Update failed");
+                        root.trayUpdateError = !parsed.success;
+                        root.trayUpdateErrorMsg = parsed.success ? "" : (parsed.message || "Update failed");
+                        if (parsed.success) {
+                            if (typeof parsed.tray_version === "string" && parsed.tray_version)
+                                root.trayVersion = parsed.tray_version;
+                            if (typeof parsed.tray_commit === "string" && parsed.tray_commit)
+                                root.trayCommit = parsed.tray_commit;
+                        }
                     } else if (stdout.trim()) {
                         root.trayUpdateStatus = stdout.trim();
+                        root.trayUpdateError = false;
                     } else if (stderr.trim()) {
                         root.trayUpdateStatus = stderr.trim();
+                        root.trayUpdateError = true;
+                        root.trayUpdateErrorMsg = stderr.trim();
                     } else {
                         root.trayUpdateStatus = "Update finished";
+                        root.trayUpdateError = false;
                     }
                 } catch(e) {
                     root.trayUpdateStatus = "Updated!";
+                    root.trayUpdateError = false;
                 }
             } else if (sourceName.indexOf("--cost") !== -1) {
                 applyCost(stdout);
@@ -140,16 +165,27 @@ PlasmoidItem {
                 refreshAll();
             } else if (sourceName.indexOf("npm view omniroute") !== -1) {
                 root.isCheckingUpdate = false;
+                root.updateLastChecked = new Date().toLocaleTimeString();
                 var ver = stdout.trim();
                 var curVer = root.serverVersion.replace(/^v/, "");
-                if (ver && ver.length < 25) {
-                    if (ver === curVer || ver === "3.8.50") {
-                        root.updateStatus = "Up to date (v" + curVer + ")";
-                    } else {
-                        root.updateStatus = "Update available: v" + ver;
-                    }
-                } else {
+                if (curVer === "unknown") {
+                    root.updateStatus = "Could not determine installed version";
+                    root.updateError = true;
+                    root.updateErrorMsg = "Installed version unknown";
+                } else if (!ver) {
+                    root.updateStatus = "Couldn't reach npm registry";
+                    root.updateError = true;
+                    root.updateErrorMsg = "Empty response";
+                } else if (ver === curVer) {
                     root.updateStatus = "Up to date (v" + curVer + ")";
+                    root.updateError = false;
+                    root.serverUpdateAvailable = false;
+                    root.serverLatestVersion = "";
+                } else {
+                    root.updateStatus = "Update available: v" + ver;
+                    root.updateError = false;
+                    root.serverUpdateAvailable = true;
+                    root.serverLatestVersion = ver;
                 }
             }
         }
@@ -204,24 +240,38 @@ PlasmoidItem {
                     root.doctorModel = parsed.doctor || [];
                     root.recentLogsModel = parsed.recent_logs || [];
 
+                    // New version fields
+                    if (typeof parsed.server_version === "string") {
+                        root.serverVersion = parsed.server_version;
+                        if (root.serverVersion === "") root.serverVersion = "unknown";
+                    }
+                    if (typeof parsed.tray_version === "string") {
+                        root.trayVersion = parsed.tray_version;
+                        if (root.trayVersion === "") root.trayVersion = "unknown";
+                    }
+                    if (typeof parsed.tray_commit === "string") {
+                        root.trayCommit = parsed.tray_commit;
+                        if (root.trayCommit === "") root.trayCommit = "unknown";
+                    }
+
                     if (parsed.cost) {
                         var snapRange = parsed.cost.range_label ? parsed.cost.range_label.toLowerCase() : "";
                         var curRange = root.costRange ? root.costRange.toLowerCase() : "30d";
                         if (!snapRange || snapRange === curRange) {
                             root.costTotalUsd = parsed.cost.total_cost_usd || 0.0;
-                        root.costTotalTokens = parsed.cost.total_tokens || 0;
-                        var rawRows = parsed.cost.rows || [];
-                        var rList = [];
-                        for (var r = 0; r < rawRows.length; r++) {
-                            rList.push({
-                                model: rawRows[r].model,
-                                costUsd: rawRows[r].cost_usd,
-                                costPct: rawRows[r].cost_pct,
-                                tokensIn: rawRows[r].tokens_in,
-                                tokensOut: rawRows[r].tokens_out
-                            });
-                        }
-                        root.costRowsModel = rList.slice(0, 5);
+                            root.costTotalTokens = parsed.cost.total_tokens || 0;
+                            var rawRows = parsed.cost.rows || [];
+                            var rList = [];
+                            for (var r = 0; r < rawRows.length; r++) {
+                                rList.push({
+                                    model: rawRows[r].model,
+                                    costUsd: rawRows[r].cost_usd,
+                                    costPct: rawRows[r].cost_pct,
+                                    tokensIn: rawRows[r].tokens_in,
+                                    tokensOut: rawRows[r].tokens_out
+                                });
+                            }
+                            root.costRowsModel = rList.slice(0, 5);
                         }
                     }
 
@@ -300,12 +350,16 @@ PlasmoidItem {
 
     function updateTray() {
         root.isUpdatingTray = true;
+        root.trayUpdateError = false;
+        root.trayUpdateErrorMsg = "";
         root.trayUpdateStatus = "Pulling latest code…";
         runCmd("~/.local/bin/omniroute-tray --update-tray # " + Date.now());
     }
 
     function checkForUpdates() {
         root.isCheckingUpdate = true;
+        root.updateError = false;
+        root.updateErrorMsg = "";
         root.updateStatus = "Checking npm registry…";
         runCmd("npm view omniroute version");
     }

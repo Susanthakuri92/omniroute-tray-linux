@@ -44,7 +44,8 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 - **30-Day Trend Sparkline**: Interactive daily spend trend bar chart with hover tooltips.
 - **Doctor Diagnostics**: Instant one-click diagnostic checks verifying Node.js runtime, OmniRoute CLI availability, SQLite database health, and loopback authorization.
 - **Live Log Viewer**: Streaming server activity log viewer with a quick shortcut to open log files directly in your default editor.
-- **Dedicated Updates Center**: Separate `🔄 Updates` tab with distinct one-click actions: **Check for Omniroute server updates** (queries npm registry) and **Check for omniroute-tray updates** (pulls from GitHub, updates binaries, and syncs plasmoids).
+- **Dedicated Updates Center**: A `🔄 Updates` tab with real, snapshot-driven version state — installed server version, tray version, and tray git commit — plus distinct one-click actions: **Check for Omniroute server updates** (queries the npm registry) and **Check for omniroute-tray updates** (pulls from GitHub, updates binaries, and syncs plasmoids). Shows a live *last checked* timestamp, an honest per-action status (checking / up to date / update available / registry unreachable / unknown installed version), and a **Copy update command** button that puts the exact `npm install -g omniroute@<version>` line on your clipboard.
+- **Single-Instance Guarantee**: The installer is idempotent and refuses to create duplicate registrations, and the standalone tray takes an advisory file lock at startup so a second launch exits immediately instead of adding a second icon to the tray.
 - **Desktop Autostart**: One-click toggle to launch OmniRoute automatically on desktop login (via XDG autostart).
 - **Dynamic Tray Icon**: Vector-rendered official OmniRoute glyph that changes color dynamically based on server status (pure white when stopped, vibrant light red when running).
 
@@ -71,6 +72,12 @@ wget -qO- https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/
 > - Registers the KDE Plasma 6 Plasmoid to `~/.local/share/plasma/plasmoids/`
 > - Generates a `.desktop` application menu launcher with official brand icons
 > - Detects your desktop environment and safely reloads Plasma Shell if active
+
+> **Safe to re-run at any time.** The installer is idempotent: every managed path is
+> removed before it is recreated, so running it twice (or ten times) leaves exactly one
+> binary symlink, one plasmoid registration, and one launcher. It never nests a
+> plasmoid inside a plasmoid, never deletes a directory it does not own, and finishes
+> with a verification pass that reports any duplicate it finds.
 
 #### Desktop Compatibility & Distribution Matrix
 
@@ -201,10 +208,32 @@ Ensure your `~/.config/waybar/config` includes the `"tray"` module:
 ## Updating
 
 ### 1. In-App One-Click Update (Recommended)
-- **KDE Plasma 6**: Open the tray popup, switch to the **🔄 Updates** tab, and click either:
-  * **`Check for Omniroute server updates`** to check npm for server releases.
-  * **`Check for omniroute-tray updates`** to update the tray application directly from GitHub.
-- **GNOME / XFCE / Other DEs**: Right-click the system tray icon and select **Check server updates…** or **Update tray app…**.
+
+- **KDE Plasma 6**: Open the tray popup and switch to the **🔄 Updates** tab. The tab header
+  shows the installed versions and a badge that reads **All up to date**, **1 update available**,
+  or **Check failed**. From there you can:
+
+  | Action | What it does |
+  | :--- | :--- |
+  | **Check for Omniroute server updates** | Queries the npm registry for the latest published `omniroute` version and compares it against the version reported by your running server. |
+  | **Check for omniroute-tray updates** | Pulls the latest commits from GitHub, re-links the CLI binary, and syncs the plasmoid. |
+
+  Each card shows the installed version (with the tray's short git commit), a *Last checked*
+  timestamp, and a status line with a colour-coded dot:
+
+  * 🟡 **Checking…** — request in flight
+  * 🟢 **Up to date (vX.Y.Z)** — the running version matches the registry
+  * 🔵 **Update available: vX.Y.Z** — a newer release exists; the card also offers
+    **Copy update command**, which copies `npm install -g omniroute@<version>` to your clipboard
+  * 🔴 **Check failed** — the registry could not be reached, or the installed version could not
+    be determined. The reason is displayed verbatim rather than being reported as "up to date".
+
+- **GNOME / XFCE / Other DEs**: Right-click the system tray icon → **Settings…** and use
+  **Check server updates** or **Update tray app** in the Updates section. The same version,
+  commit, and status information is shown in the popover header.
+
+> The tray never guesses. If it cannot determine a version, or the registry is unreachable, the
+> UI says so explicitly instead of showing a green "up to date" badge.
 
 ### 2. Via CLI
 ```bash
@@ -219,6 +248,22 @@ git pull
 install -m 755 omniroute_tray.py ~/.local/bin/omniroute-tray
 systemctl --user restart plasma-plasmashell
 ```
+
+### 4. Uninstalling
+
+```bash
+# If you installed with the one-line installer:
+bash install.sh --uninstall
+# or, from a cloned checkout:
+./install.sh --uninstall
+```
+
+This removes the `omniroute-tray` binary symlink, the user plasmoid, the desktop launcher,
+the cloned repository, and the QML cache, then rebuilds the KDE service cache. If a
+system-wide copy of the plasmoid is also present, the uninstaller prints the `sudo rm -rf`
+command needed to remove it — it will not touch system paths itself.
+
+---
 
 ## Desktop Autostart & Background Daemon
 
@@ -329,6 +374,66 @@ Omniroute-tray/
 ├── .gitignore                      # Clean development exclusions
 └── README.md                       # Documentation
 ```
+
+---
+
+## Troubleshooting
+
+### Duplicate tray icons / widget appears twice
+
+There are exactly two things that cause this, and the installer detects both on every run.
+
+**1. The widget is registered twice in Plasma.** This happens when OmniRoute ends up both as a
+standalone panel applet *and* as an entry inside the system tray containment. Plasma stores both
+in `~/.config/plasma-org.kde.plasma.desktop-appletsrc`, and the installer warns when it finds the
+pattern:
+
+```
+! OmniRoute appears twice in your panel: once as a standalone widget and once in the system tray.
+```
+
+**Fix:** right-click the duplicate icon → **Remove from Panel**, or open the system tray
+settings and uncheck the entry under *Entries*.
+
+**2. A stale or system-wide install is shadowing the user install.** Two installs of the same
+plasmoid ID (`org.omniroute.plasmoid`) will both load. Check for them:
+
+```bash
+ls -la ~/.local/share/plasma/plasmoids/org.omniroute.plasmoid        # user install (expected: a symlink)
+ls -la /usr/share/plasma/plasmoids/org.omniroute.plasmoid            # system-wide (usually unwanted)
+```
+
+**Fix:**
+
+```bash
+# Re-run the installer — it removes and recreates the user paths atomically
+bash install.sh
+
+# Remove a system-wide copy (requires root)
+sudo rm -rf /usr/share/plasma/plasmoids/org.omniroute.plasmoid
+
+# Reset the QML cache and restart Plasma
+rm -rf ~/.cache/qmlcache ~/.cache/plasmashell/qmlcache
+kquitapp6 plasmashell; sleep 2; plasmashell &
+```
+
+Also worth checking: a leftover clone at `~/.local/share/omniroute-tray` that you no longer use.
+The installer only deletes it when it can prove it is a clone of this repository, and warns
+instead of guessing otherwise.
+
+### Two tray icons in GNOME / XFCE / a tiling WM
+
+The standalone tray refuses to start a second copy. It takes an advisory lock on
+`~/.local/share/omniroute-tray/tray.lock` at startup; a second launch prints
+
+```
+OmniRoute Tray is already running (pid 12345); focusing the existing instance.
+```
+
+and exits with status 0. The lock is held by the kernel, so a crashed or `kill -9`'d tray never
+leaves a stale lock behind — the next launch starts normally. If you genuinely see two icons,
+they are two different installs; find them with `which -a omniroute-tray` and
+`pgrep -af omniroute_tray`.
 
 ---
 

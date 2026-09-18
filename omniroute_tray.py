@@ -15,6 +15,7 @@ Faithfully recreating zoispag/omniroute-tray's UI design and complete feature se
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import hmac
 import json
@@ -50,6 +51,10 @@ try:
         QLabel, QMenu, QMessageBox, QProgressBar, QPushButton, QStackedWidget,
         QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
     )
+    try:
+        from PySide6.QtCore import QLockFile
+    except ImportError:
+        QLockFile = None
     try:
         from PySide6.QtSvg import QSvgRenderer
     except ImportError:
@@ -90,6 +95,12 @@ DEFAULT_API_BASE = "http://127.0.0.1:20128"
 DEFAULT_PORT = 20128
 CLI_AUTH_SALT = "omniroute-cli-auth-v1"
 
+# Tray application version. Surfaced in the Updates UI next to the git commit.
+TRAY_VERSION = "1.1.0"
+
+# Held for the lifetime of the process while the GUI owns the single-instance lock.
+_GUI_LOCK = None
+
 
 def ensure_dirs() -> None:
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -105,6 +116,53 @@ def log_line(msg: str) -> None:
             f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg.rstrip()}\n")
     except Exception:
         pass
+
+
+def acquire_single_instance_lock() -> Tuple[bool, str]:
+    """Take the GUI-mode single-instance lock.
+
+    flock is used because the kernel drops it automatically when the holding
+    process dies, so a crashed tray can never wedge the lock the way a stale
+    PID file would. Returns (acquired, owner) where owner describes the
+    existing instance for logging.
+
+    Only GUI mode takes this lock: the CLI flags must keep working while a
+    tray is running (the plasmoid drives them).
+    """
+    global _GUI_LOCK
+    ensure_dirs()
+    lock_path = APP_STATE_DIR / "tray.lock"
+    try:
+        handle = open(lock_path, "a+")
+    except Exception as e:
+        # No lock available: running is better than refusing to start.
+        return True, f"lock unavailable: {e}"
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.seek(0)
+        owner = handle.read().strip() or "unknown"
+        handle.close()
+        return False, owner
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    _GUI_LOCK = handle
+    return True, str(os.getpid())
+
+
+def release_single_instance_lock() -> None:
+    """Release the GUI lock so a replacement tray can start immediately."""
+    global _GUI_LOCK
+    if _GUI_LOCK is None:
+        return
+    try:
+        fcntl.flock(_GUI_LOCK.fileno(), fcntl.LOCK_UN)
+        _GUI_LOCK.close()
+    except Exception:
+        pass
+    _GUI_LOCK = None
 
 
 @dataclass
@@ -508,6 +566,11 @@ class FullSnapshot:
     server_running: bool = False
     autostart_enabled: bool = False
     recent_logs: List[str] = field(default_factory=list)
+    # Version metadata for the Updates UI. Additive only — existing consumers
+    # ignore unknown keys, so these must never replace or reorder the above.
+    server_version: str = "unknown"
+    tray_version: str = TRAY_VERSION
+    tray_commit: str = "unknown"
 
 
 
@@ -576,6 +639,41 @@ def get_tray_repo_dir() -> Optional[Path]:
     return None
 
 
+_TRAY_COMMIT_CACHE: Optional[str] = None
+
+
+def get_tray_commit() -> str:
+    """Short git SHA of the tray repo, memoised per process.
+
+    The snapshot is polled every few seconds, so the git subprocess must run at
+    most once; a commit cannot change while we are running anyway.
+    """
+    global _TRAY_COMMIT_CACHE
+    if _TRAY_COMMIT_CACHE is None:
+        repo = get_tray_repo_dir()
+        commit = ""
+        if repo:
+            try:
+                commit = subprocess.run(
+                    ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True, timeout=3,
+                ).stdout.strip()
+            except Exception:
+                commit = ""
+        _TRAY_COMMIT_CACHE = commit or "unknown"
+    return _TRAY_COMMIT_CACHE
+
+
+def get_installed_server_version(settings: "Settings") -> str:
+    """Installed OmniRoute CLI/server version, without a leading 'v'."""
+    raw = probe_version([cli_binary(settings)]).strip()
+    if raw.startswith("v"):
+        raw = raw[1:]
+    # CLI banners can put the version on a later line; keep the first token.
+    raw = raw.splitlines()[0].strip() if raw else ""
+    return raw or "unknown"
+
+
 def self_update_tray() -> dict:
     """Updates the tray application from its git repository."""
     repo = get_tray_repo_dir()
@@ -620,7 +718,13 @@ def self_update_tray() -> dict:
                 shutil.rmtree(qml_cache_dir, ignore_errors=True)
 
         msg = "Already up to date!" if already_up_to_date else "Updated successfully!"
-        return {"success": True, "already_up_to_date": already_up_to_date, "message": msg}
+        return {
+            "success": True,
+            "already_up_to_date": already_up_to_date,
+            "message": msg,
+            "tray_version": TRAY_VERSION,
+            "tray_commit": get_tray_commit(),
+        }
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -916,6 +1020,12 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
         snap.doctor.append(DoctorItem("Loopback Token", "warn", "Unauthenticated loopback"))
 
     snap.autostart_enabled = AUTOSTART_FILE.exists()
+
+    # Version metadata for the Updates UI. probe_version/get_tray_commit are both
+    # memoised, so the polling loop never spawns a subprocess for these.
+    snap.server_version = get_installed_server_version(settings)
+    snap.tray_version = TRAY_VERSION
+    snap.tray_commit = get_tray_commit()
 
     # 7. Recent Server Logs (consumed only by the plasmoid's snapshot)
     if plasmoid_extras and OMNIROUTE_APP_LOG.is_file():
@@ -1402,6 +1512,14 @@ QPushButton.action-btn.danger {
 QPushButton.action-btn.danger:hover {
     background-color: rgba(239, 68, 68, 0.28);
 }
+.upd-versions {
+    font-size: 10.5px;
+    color: #6b7280;
+}
+.upd-status {
+    font-size: 11px;
+    color: #a1a1aa;
+}
 """
 
 
@@ -1651,6 +1769,38 @@ class OmniRoutePopover(QWidget):
         self._refresh_doctor_box()
         layout.addLayout(self.doctor_box)
 
+        # Updates — mirrors the plasmoid's Updates tab so both frontends report
+        # the same thing. Versions come from the polled snapshot; results are
+        # pushed back through bridge.update_status.
+        layout.addWidget(QLabel("<b>Updates</b>"))
+
+        self.lbl_upd_versions = QLabel("Server: unknown · Tray: unknown")
+        self.lbl_upd_versions.setProperty("class", "upd-versions")
+        self.lbl_upd_versions.setWordWrap(True)
+        layout.addWidget(self.lbl_upd_versions)
+
+        self.lbl_upd_server = QLabel("Server: never checked")
+        self.lbl_upd_server.setProperty("class", "upd-status")
+        self.lbl_upd_server.setWordWrap(True)
+        layout.addWidget(self.lbl_upd_server)
+
+        self.btn_upd_server = QPushButton("Check server updates")
+        self.btn_upd_server.setProperty("class", "action-btn")
+        self.btn_upd_server.clicked.connect(self._check_server_updates)
+        layout.addWidget(self.btn_upd_server)
+
+        self.lbl_upd_tray = QLabel("Tray: never checked")
+        self.lbl_upd_tray.setProperty("class", "upd-status")
+        self.lbl_upd_tray.setWordWrap(True)
+        layout.addWidget(self.lbl_upd_tray)
+
+        self.btn_upd_tray = QPushButton("Update tray app")
+        self.btn_upd_tray.setProperty("class", "action-btn")
+        self.btn_upd_tray.clicked.connect(self._update_tray_app)
+        layout.addWidget(self.btn_upd_tray)
+
+        self.tray_app.bridge.update_status.connect(self._on_update_status)
+
         # Server Management
         layout.addWidget(QLabel("<b>Server</b>"))
         self.chk_autostart = QCheckBox("Start on login")
@@ -1831,6 +1981,35 @@ class OmniRoutePopover(QWidget):
             self.tray_app.settings.start_on_login = False
         self.tray_app.settings.save()
 
+    def _check_server_updates(self):
+        """Kick off the server check; the result lands via bridge.update_status."""
+        self.btn_upd_server.setEnabled(False)
+        self.lbl_upd_server.setText("Server: Checking npm registry…")
+        self.lbl_upd_server.setStyleSheet("font-size: 11px; color: #f59e0b;")
+        self.tray_app._background_update_check()
+
+    def _update_tray_app(self):
+        """Kick off the tray self-update; the result lands via bridge.update_status."""
+        self.btn_upd_tray.setEnabled(False)
+        self.lbl_upd_tray.setText("Tray: Updating from GitHub…")
+        self.lbl_upd_tray.setStyleSheet("font-size: 11px; color: #f59e0b;")
+        self.tray_app._manual_update_tray()
+
+    def _on_update_status(self, component: str, text: str, is_error: bool):
+        """Render an update result inline, and re-enable the matching button."""
+        color = "#fca5a5" if is_error else "#a1a1aa"
+        busy = ("Checking" in text) or ("Updating" in text) or ("Pulling" in text)
+        label = self.lbl_upd_server if component == "server" else self.lbl_upd_tray
+        button = self.btn_upd_server if component == "server" else self.btn_upd_tray
+        prefix = "Server: " if component == "server" else "Tray: "
+        idle_text = "Check server updates" if component == "server" else "Update tray app"
+        busy_text = "Checking…" if component == "server" else "Updating…"
+
+        label.setText(prefix + text)
+        label.setStyleSheet(f"font-size: 11px; color: {'#f59e0b' if busy else color};")
+        button.setEnabled(not busy)
+        button.setText(busy_text if busy else idle_text)
+
     def _refresh_doctor_box(self):
         """Render diagnostics from the last snapshot.
 
@@ -1873,6 +2052,13 @@ class OmniRoutePopover(QWidget):
     def render_snapshot(self, snap: FullSnapshot):
         mode_used = (self.tray_app.settings.percent_mode == "used")
         self.btn_quota_mode.setText(f"% {self.tray_app.settings.percent_mode}")
+
+        # 0. Updates row — versions only; live check results come from
+        # bridge.update_status, which owns the status lines.
+        commit = snap.tray_commit if snap.tray_commit != "unknown" else "unknown"
+        self.lbl_upd_versions.setText(
+            f"Server: v{snap.server_version} · Tray: v{snap.tray_version} ({commit})"
+        )
 
         # 1. Status Band
         if snap.health.configured_providers > 0:
@@ -2044,6 +2230,8 @@ class Bridge(QObject):
     log_line = Signal(str)
     snapshot_ready = Signal(object)
     update_available = Signal(str, str)
+    # (component, status_text, is_error) — "server" | "tray"
+    update_status = Signal(str, str, bool)
 
 
 
@@ -2231,17 +2419,35 @@ class TrayApp:
         threading.Thread(target=self._async_check_update, daemon=True).start()
 
     def _async_check_update(self):
+        """Check npm for a newer server release and report every outcome.
+
+        Never raises: a failed check is a reportable state, not a silent
+        "up to date" (which is what the UI must never show on error).
+        """
         try:
             res = subprocess.run([cli_binary(self.settings), "--version"], capture_output=True, text=True)
-            installed = res.stdout.strip()
-            req = urllib.request.Request("https://registry.npmjs.org/omniroute/latest")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-                latest = data.get("version")
-                if installed and latest and installed != latest:
-                    self.bridge.update_available.emit(installed, latest)
-        except Exception:
-            pass
+            installed = res.stdout.strip().splitlines()[0].strip() if res.stdout.strip() else ""
+            if installed.startswith("v"):
+                installed = installed[1:]
+            if not installed:
+                self.bridge.update_status.emit("server", "Could not determine installed version", True)
+                return
+            try:
+                req = urllib.request.Request("https://registry.npmjs.org/omniroute/latest")
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    latest = (json.loads(resp.read()).get("version") or "").strip()
+            except Exception:
+                self.bridge.update_status.emit("server", "Couldn't reach npm registry", True)
+                return
+            if not latest:
+                self.bridge.update_status.emit("server", "Couldn't reach npm registry", True)
+            elif latest == installed:
+                self.bridge.update_status.emit("server", f"Up to date (v{installed})", False)
+            else:
+                self.bridge.update_status.emit("server", f"Update available: v{installed} → v{latest}", False)
+                self.bridge.update_available.emit(installed, latest)
+        except Exception as e:
+            self.bridge.update_status.emit("server", f"Update check failed: {e}", True)
 
     def _on_update_available(self, installed: str, latest: str):
         self.tray.showMessage(
@@ -2252,12 +2458,19 @@ class TrayApp:
         )
 
     def _manual_update_tray(self):
+        self.bridge.update_status.emit("tray", "Updating from GitHub…", False)
         self.tray.showMessage("OmniRoute Tray", "Updating tray from GitHub repository…", QSystemTrayIcon.Information, 3000)
         def _run():
             res = self_update_tray()
+            ok = bool(res.get("success"))
             msg = res.get("message", "Tray update completed")
-            icon = QSystemTrayIcon.Information if res.get("success") else QSystemTrayIcon.Warning
+            icon = QSystemTrayIcon.Information if ok else QSystemTrayIcon.Warning
             self.tray.showMessage("OmniRoute Tray", msg, icon, 5000)
+            self.bridge.update_status.emit("tray", msg, not ok)
+            if ok:
+                # Versions/commit changed on disk: re-poll so the UI stops
+                # showing the pre-update build.
+                self._poll_data()
         threading.Thread(target=_run, daemon=True).start()
 
     def _force_stop_clicked(self):
@@ -2297,6 +2510,7 @@ class TrayApp:
         self.supervisor.stop()
         if not self.supervisor.wait_stopped(timeout=5.0):
             log_line("Stop did not finish within 5s; quitting anyway")
+        release_single_instance_lock()
         self.app.quit()
 
     def run(self):
@@ -2384,6 +2598,14 @@ def main():
         print("    • Fedora:                sudo dnf install python3-pyside6", file=sys.stderr)
         print("    • Or via pip:            pip install PySide6\n", file=sys.stderr)
         sys.exit(1)
+
+    # GUI mode only: refuse to become a second tray icon.
+    acquired, owner = acquire_single_instance_lock()
+    if not acquired:
+        msg = f"OmniRoute Tray is already running (pid {owner}); focusing the existing instance."
+        log_line(msg)
+        print(msg, file=sys.stderr)
+        sys.exit(0)
 
     app = TrayApp()
     sys.exit(app.run())

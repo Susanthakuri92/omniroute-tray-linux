@@ -119,7 +119,7 @@ Item {
             }
 
             Text {
-                text: plasmoidItem ? plasmoidItem.serverVersion : "v3.8.50"
+                text: plasmoidItem ? plasmoidItem.serverVersion : "unknown"
                 font.pixelSize: 10
                 color: "#71717a"
             }
@@ -969,13 +969,23 @@ Item {
         // ====================================================================
         // TAB 4: UPDATES VIEW
         // ====================================================================
-        ColumnLayout {
-            id: updatesTab
+        PlasmaComponents.ScrollView {
+            id: updatesScrollView
             Layout.fillWidth: true
+            Layout.fillHeight: true
             Layout.preferredHeight: cardRoot.activeTabHeight
             clip: true
-            spacing: 10
             visible: cardRoot.activeTab === "updates"
+            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+            QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
+
+            contentWidth: availableWidth
+            contentHeight: updatesTab.implicitHeight + 16
+
+            ColumnLayout {
+                id: updatesTab
+                width: updatesScrollView.availableWidth
+                spacing: 10
 
             // Header Section
             RowLayout {
@@ -1002,11 +1012,36 @@ Item {
                     Text {
                         id: channelText
                         anchors.centerIn: parent
-                        text: "Release Channel: Stable"
+                        text: {
+                            if (!plasmoidItem) return "Release Channel: Stable";
+                            if (plasmoidItem.serverUpdateAvailable) return "1 update available";
+                            if (plasmoidItem.updateError || plasmoidItem.trayUpdateError) return "Check failed";
+                            return "All up to date";
+                        }
                         font.pixelSize: 9
-                        color: "#a1a1aa"
+                        color: {
+                            if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
+                            if (plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)) return "#ef4444";
+                            return "#a1a1aa";
+                        }
                     }
                 }
+            }
+
+            // Last checked line
+            Text {
+                Layout.fillWidth: true
+                text: {
+                    if (!plasmoidItem) return "Last checked: never";
+                    if (!plasmoidItem.updateLastChecked && !plasmoidItem.trayUpdateLastChecked) return "Last checked: never";
+                    if (plasmoidItem.updateLastChecked && plasmoidItem.trayUpdateLastChecked)
+                        return "Server checked: " + plasmoidItem.updateLastChecked + " · Tray checked: " + plasmoidItem.trayUpdateLastChecked;
+                    if (plasmoidItem.updateLastChecked) return "Server checked: " + plasmoidItem.updateLastChecked;
+                    return "Tray checked: " + plasmoidItem.trayUpdateLastChecked;
+                }
+                font.pixelSize: 9
+                color: "#71717a"
+                elide: Text.ElideRight
             }
 
             // Card 1: OmniRoute Server
@@ -1061,12 +1096,45 @@ Item {
                             Text {
                                 id: serverVerText
                                 anchors.centerIn: parent
-                                text: plasmoidItem ? plasmoidItem.serverVersion : "v3.8.50"
+                                text: plasmoidItem ? plasmoidItem.serverVersion : "unknown"
                                 font.pixelSize: 10
                                 font.family: "monospace"
                                 color: "#fafafa"
                             }
                         }
+                    }
+
+                    // Latest available badge (only when a server update exists)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: plasmoidItem && plasmoidItem.serverUpdateAvailable
+
+                        Text {
+                            text: "Latest:"
+                            font.pixelSize: 10
+                            color: "#a1a1aa"
+                        }
+
+                        Rectangle {
+                            height: 18
+                            radius: 4
+                            color: Qt.rgba(56, 189, 248, 0.12)
+                            border.color: Qt.rgba(56, 189, 248, 0.35)
+                            border.width: 1
+                            implicitWidth: latestVerText.implicitWidth + 10
+
+                            Text {
+                                id: latestVerText
+                                anchors.centerIn: parent
+                                text: "v" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "")
+                                font.pixelSize: 10
+                                font.family: "monospace"
+                                color: "#38bdf8"
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
                     }
 
                     // Status pill / text
@@ -1080,17 +1148,85 @@ Item {
                             radius: 3
                             color: {
                                 if (plasmoidItem && plasmoidItem.isCheckingUpdate) return "#f59e0b";
-                                if (plasmoidItem && plasmoidItem.updateStatus.indexOf("Update available") !== -1) return "#38bdf8";
+                                if (plasmoidItem && plasmoidItem.updateError) return "#ef4444";
+                                if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
                                 return "#10b981";
                             }
                         }
 
                         Text {
-                            text: plasmoidItem ? plasmoidItem.updateStatus : "Up to date (v3.8.50)"
+                            text: {
+                                if (!plasmoidItem) return "Never checked";
+                                if (plasmoidItem.isCheckingUpdate) return "Checking npm registry…";
+                                if (plasmoidItem.updateError) return plasmoidItem.updateErrorMsg || "Couldn't check for updates";
+                                if (plasmoidItem.serverUpdateAvailable) return "Update available: v" + plasmoidItem.serverLatestVersion;
+                                if (!plasmoidItem.updateLastChecked) return "Never checked";
+                                return "Up to date (v" + plasmoidItem.serverVersion + ")";
+                            }
                             font.pixelSize: 10
-                            color: "#d4d4d8"
+                            color: {
+                                if (plasmoidItem && plasmoidItem.updateError) return "#f87171";
+                                return "#d4d4d8";
+                            }
                             Layout.fillWidth: true
                             elide: Text.ElideRight
+                        }
+                    }
+
+                    // Copy update command (only when an update is available)
+                    Rectangle {
+                        id: copyCmdBtn
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 6
+                        visible: plasmoidItem && plasmoidItem.serverUpdateAvailable
+                        property bool copied: false
+                        color: copyCmdArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                        border.color: copyCmdArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
+                        border.width: 1
+
+                        Text {
+                            id: copyHidden
+                            visible: false
+                            text: "npm install -g omniroute@" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "latest")
+                        }
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: copyCmdBtn.copied ? "✓" : "📋"
+                                font.pixelSize: 11
+                                color: copyCmdBtn.copied ? "#10b981" : "#fafafa"
+                            }
+
+                            Text {
+                                text: copyCmdBtn.copied ? "Copied to clipboard" : "Copy update command"
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: copyCmdBtn.copied ? "#10b981" : "#fafafa"
+                            }
+                        }
+
+                        MouseArea {
+                            id: copyCmdArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                copyHidden.selectAll();
+                                copyHidden.copy();
+                                copyCmdBtn.copied = true;
+                                copyResetTimer.restart();
+                            }
+                        }
+
+                        Timer {
+                            id: copyResetTimer
+                            interval: 1600
+                            repeat: false
+                            onTriggered: copyCmdBtn.copied = false
                         }
                     }
 
@@ -1184,11 +1320,33 @@ Item {
                             Text {
                                 id: trayBranchText
                                 anchors.centerIn: parent
-                                text: "GitHub (main)"
+                                text: plasmoidItem ? plasmoidItem.trayVersion : "unknown"
                                 font.pixelSize: 10
                                 font.family: "monospace"
                                 color: "#fafafa"
                             }
+                        }
+                    }
+
+                    // Commit line
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: "Commit:"
+                            font.pixelSize: 10
+                            color: "#a1a1aa"
+                        }
+
+                        Text {
+                            text: (plasmoidItem && plasmoidItem.trayCommit && plasmoidItem.trayCommit !== "unknown")
+                                  ? plasmoidItem.trayCommit : "unknown"
+                            font.pixelSize: 10
+                            font.family: "monospace"
+                            color: "#d4d4d8"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
                     }
 
@@ -1203,15 +1361,24 @@ Item {
                             radius: 3
                             color: {
                                 if (plasmoidItem && plasmoidItem.isUpdatingTray) return "#f59e0b";
-                                if (plasmoidItem && plasmoidItem.trayUpdateStatus.indexOf("failed") !== -1) return "#ef4444";
+                                if (plasmoidItem && plasmoidItem.trayUpdateError) return "#ef4444";
                                 return "#10b981";
                             }
                         }
 
                         Text {
-                            text: plasmoidItem ? plasmoidItem.trayUpdateStatus : "Already up to date!"
+                            text: {
+                                if (!plasmoidItem) return "Never checked";
+                                if (plasmoidItem.isUpdatingTray) return "Pulling latest code…";
+                                if (plasmoidItem.trayUpdateError) return plasmoidItem.trayUpdateErrorMsg || "Update failed";
+                                if (!plasmoidItem.trayUpdateLastChecked) return "Never checked";
+                                return plasmoidItem.trayUpdateStatus || "Up to date";
+                            }
                             font.pixelSize: 10
-                            color: "#d4d4d8"
+                            color: {
+                                if (plasmoidItem && plasmoidItem.trayUpdateError) return "#f87171";
+                                return "#d4d4d8";
+                            }
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -1284,7 +1451,8 @@ Item {
                 }
             }
 
-            Item { Layout.fillHeight: true }
+            Item { Layout.preferredHeight: 4 }
+            }
         }
 
         // ====================================================================
