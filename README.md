@@ -44,7 +44,7 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 - **30-Day Trend Sparkline**: Interactive daily spend trend bar chart with hover tooltips.
 - **Doctor Diagnostics**: Instant one-click diagnostic checks verifying Node.js runtime, OmniRoute CLI availability, SQLite database health, and loopback authorization.
 - **Live Log Viewer**: Streaming server activity log viewer with a quick shortcut to open log files directly in your default editor.
-- **One-Click Update Checker**: Queries the npm registry for newly published OmniRoute releases and notifies you when an update is available.
+- **Dedicated Updates Center**: Separate `🔄 Updates` tab with distinct one-click actions: **Check for Omniroute server updates** (queries npm registry) and **Check for omniroute-tray updates** (pulls from GitHub, updates binaries, and syncs plasmoids).
 - **Desktop Autostart**: One-click toggle to launch OmniRoute automatically on desktop login (via XDG autostart).
 - **Dynamic Tray Icon**: Vector-rendered official OmniRoute glyph that changes color dynamically based on server status (pure white when stopped, vibrant light red when running).
 
@@ -165,8 +165,10 @@ Ensure your `~/.config/waybar/config` includes the `"tray"` module:
 ## Updating
 
 ### 1. In-App One-Click Update (Recommended)
-- **KDE Plasma 6**: Open the tray popup and click **[Update Tray]** in the Updates section.
-- **GNOME / XFCE / Other DEs**: Right-click the system tray icon and select **Update tray app…**.
+- **KDE Plasma 6**: Open the tray popup, switch to the **🔄 Updates** tab, and click either:
+  * **`Check for Omniroute server updates`** to check npm for server releases.
+  * **`Check for omniroute-tray updates`** to update the tray application directly from GitHub.
+- **GNOME / XFCE / Other DEs**: Right-click the system tray icon and select **Check server updates…** or **Update tray app…**.
 
 ### 2. Via CLI
 ```bash
@@ -274,7 +276,7 @@ Omniroute-tray/
 │   ├── contents/
 │   │   ├── ui/
 │   │   │   ├── main.qml            # Core engine, polling, command execution
-│   │   │   ├── FullRepresentation.qml # Tabbed UI (Server, Monitor, Doctor & Logs)
+│   │   │   ├── FullRepresentation.qml # Tabbed UI (Server, Monitor, Doctor, Updates)
 │   │   │   ├── CompactRepresentation.qml # Dynamic tray panel icon
 │   │   │   └── configGeneral.qml   # Plasma configuration dialog
 │   │   └── icons/                  # Scalable official vector SVGs
