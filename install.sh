@@ -40,10 +40,20 @@ log_error() {
 if [ "${1:-}" = "--uninstall" ]; then
     log_info "Uninstalling OmniRoute Tray..."
     rm -f "${BIN_DIR}/omniroute-tray"
-    rm -rf "${PLASMOID_DIR}"
+    if [ -L "${PLASMOID_DIR}" ]; then
+        rm -f "${PLASMOID_DIR}"
+    else
+        rm -rf "${PLASMOID_DIR}"
+    fi
     rm -f "${DESKTOP_DIR}/omniroute-tray.desktop"
     rm -rf "${INSTALL_DIR}"
     rm -rf "${HOME}/.cache/plasmashell/qmlcache" "${HOME}/.cache/qmlcache" 2>/dev/null || true
+    if command -v kbuildsycoca6 &>/dev/null; then
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+    fi
+    if pgrep -x "plasmashell" &>/dev/null; then
+        systemctl --user restart plasma-plasmashell 2>/dev/null || true
+    fi
     log_success "OmniRoute Tray has been uninstalled."
     exit 0
 fi
@@ -89,7 +99,8 @@ else
     SOURCE_DIR="${INSTALL_DIR}"
     if [ -d "${INSTALL_DIR}/.git" ]; then
         log_info "Updating existing repository in ${INSTALL_DIR}..."
-        git -C "${INSTALL_DIR}" pull --quiet || true
+        git -C "${INSTALL_DIR}" fetch --quiet origin main 2>/dev/null || true
+        git -C "${INSTALL_DIR}" reset --hard origin/main --quiet 2>/dev/null || git -C "${INSTALL_DIR}" pull --quiet || true
     else
         log_info "Cloning repository into ${INSTALL_DIR}..."
         rm -rf "${INSTALL_DIR}"
@@ -109,6 +120,9 @@ log_info "Setting up KDE Plasma 6 widget..."
 mkdir -p "${HOME}/.local/share/plasma/plasmoids"
 ln -sfn "${SOURCE_DIR}/org.omniroute.plasmoid" "${PLASMOID_DIR}"
 rm -rf "${HOME}/.cache/plasmashell/qmlcache" "${HOME}/.cache/qmlcache" 2>/dev/null || true
+if command -v kbuildsycoca6 &>/dev/null; then
+    kbuildsycoca6 --noincremental 2>/dev/null || true
+fi
 log_success "Plasmoid registered."
 
 # 5. Create Desktop Launcher
