@@ -11,7 +11,7 @@ Faithfully recreating zoispag/omniroute-tray's UI design and complete feature se
 - Auto-update release detector and update banner
 - In-popover Settings & Doctor view toggled via gear icon (section toggles, diagnostics, autostart, logs, quit)
 - Left-click opens popover; right-click opens quick context menu
-- Approved flat vector icon: crisp white hub & spokes, 6 color-changing outer points (red when running, white when stopped)
+- Monochrome symbolic tray icon that adapts to the panel palette (solid nodes when running, hollow when stopped)
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from PySide6.QtCore import (
     QByteArray, QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 )
 from PySide6.QtGui import (
-    QColor, QCursor, QIcon, QPainter, QPen, QPixmap
+    QColor, QCursor, QIcon, QPainter, QPalette, QPen, QPixmap
 )
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
@@ -549,6 +549,152 @@ def cli_binary(settings: Settings) -> str:
     return cmd[0] if cmd else "omniroute"
 
 
+def get_tray_repo_dir() -> Optional[Path]:
+    """Find the root of the git repository for OmniRoute Tray."""
+    candidates = [
+        Path(__file__).resolve().parent,
+        Path.home() / ".local" / "bin" / "omniroute-tray",
+        Path.home() / "Projects" / "Omniroute-tray",
+        Path.home() / "Omniroute-tray",
+    ]
+    for c in candidates:
+        if c.is_symlink():
+            c = c.resolve().parent
+        if c.is_dir() and (c / ".git").is_dir():
+            return c
+    return None
+
+
+def self_update_tray() -> dict:
+    """Updates the tray application from its git repository."""
+    repo = get_tray_repo_dir()
+    if not repo:
+        return {"success": False, "message": "Git repository not found"}
+
+    try:
+        res = subprocess.run(["git", "-C", str(repo), "pull"], capture_output=True, text=True, timeout=25)
+        stdout = res.stdout.strip()
+        stderr = res.stderr.strip()
+        if res.returncode != 0:
+            return {"success": False, "message": f"Pull failed: {stderr or stdout}"}
+
+        already_up_to_date = "Already up to date" in stdout
+
+        # 1. Sync executable to ~/.local/bin/omniroute-tray
+        bin_target = Path.home() / ".local" / "bin" / "omniroute-tray"
+        bin_target.parent.mkdir(parents=True, exist_ok=True)
+        src_py = repo / "omniroute_tray.py"
+        if not bin_target.is_symlink() and src_py.is_file():
+            shutil.copy2(src_py, bin_target)
+            bin_target.chmod(0o755)
+        elif not bin_target.exists() and src_py.is_file():
+            try:
+                bin_target.symlink_to(src_py)
+            except Exception:
+                shutil.copy2(src_py, bin_target)
+                bin_target.chmod(0o755)
+
+        # 2. Sync plasmoid directory if installed as a copy
+        plasmoid_target = Path.home() / ".local" / "share" / "plasma" / "plasmoids" / "org.omniroute.plasmoid"
+        src_plasmoid = repo / "org.omniroute.plasmoid"
+        if plasmoid_target.exists() and not plasmoid_target.is_symlink() and src_plasmoid.is_dir():
+            shutil.copytree(src_plasmoid, plasmoid_target, dirs_exist_ok=True)
+
+        # 3. Clear QML cache
+        for qml_cache_dir in [
+            Path.home() / ".cache" / "plasmashell" / "qmlcache",
+            Path.home() / ".cache" / "qmlcache",
+        ]:
+            if qml_cache_dir.is_dir():
+                shutil.rmtree(qml_cache_dir, ignore_errors=True)
+
+        msg = "Already up to date!" if already_up_to_date else "Updated successfully!"
+        return {"success": True, "already_up_to_date": already_up_to_date, "message": msg}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+def fetch_cost_data(settings: Settings, range_str: str) -> Optional[CostData]:
+    base_url = settings.api_base.rstrip("/")
+    token = resolve_cli_token()
+    headers = {}
+    if token:
+        headers["x-omniroute-cli-token"] = token
+
+    # 1. Direct API endpoint (instant ~50ms)
+    try:
+        req = urllib.request.Request(f"{base_url}/api/usage/analytics?range={range_str}", headers=headers)
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read())
+            bm = data.get("byModel", [])
+            tot_cost = sum(float(m.get("cost", 0) or 0) for m in bm)
+            tot_tokens = sum(int(m.get("totalTokens", 0) or 0) for m in bm)
+            rows = []
+            for m in bm:
+                c = float(m.get("cost", 0) or 0)
+                rows.append(
+                    CostRow(
+                        model=m.get("model", "unknown"),
+                        cost_usd=c,
+                        cost_pct=(c / tot_cost * 100.0) if tot_cost > 0 else 0.0,
+                        tokens_in=int(m.get("promptTokens", 0) or 0),
+                        tokens_out=int(m.get("completionTokens", 0) or 0),
+                        requests=int(m.get("totalRequests", 0) or 0),
+                    )
+                )
+            rows.sort(key=lambda x: x.cost_usd, reverse=True)
+            return CostData(
+                range_label=range_str.upper(),
+                total_cost_usd=tot_cost,
+                total_tokens=tot_tokens,
+                rows=rows,
+            )
+    except Exception:
+        pass
+
+    # 2. Subprocess fallback
+    try:
+        c_res = subprocess.run(
+            [cli_binary(settings), "cost", "--period", range_str, "--group-by", "model", "--output", "json"],
+            capture_output=True, text=True, timeout=8
+        )
+        cand = extract_json_candidate(c_res.stdout)
+        if cand:
+            rows_data = json.loads(cand)
+            rows = []
+            tot_usd = 0.0
+            tot_tokens = 0
+            for r in rows_data:
+                model = r.get("group", "other")
+                cost = float(r.get("costUsd", 0) or 0)
+                cost_pct = float(r.get("costPct", 0) or 0)
+                t_in = int(r.get("tokensIn", 0) or 0)
+                t_out = int(r.get("tokensOut", 0) or 0)
+                reqs = int(r.get("requests", 0) or 0)
+                tot_usd += cost
+                tot_tokens += (t_in + t_out)
+                rows.append(
+                    CostRow(
+                        model=model,
+                        cost_usd=cost,
+                        cost_pct=cost_pct,
+                        tokens_in=t_in,
+                        tokens_out=t_out,
+                        requests=reqs,
+                    )
+                )
+            rows.sort(key=lambda x: x.cost_usd, reverse=True)
+            return CostData(
+                range_label=range_str.upper(),
+                total_cost_usd=tot_usd,
+                total_tokens=tot_tokens,
+                rows=rows,
+            )
+    except Exception:
+        pass
+    return None
+
+
 def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> FullSnapshot:
     """Collect a full telemetry snapshot.
 
@@ -630,51 +776,12 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
 
     # 3. Cost Breakdown
     def _fetch_cost() -> Optional[CostData]:
-        try:
-            c_res = subprocess.run(
-                [cli_binary(settings), "cost", "--period", settings.cost_range, "--group-by", "model", "--output", "json"],
-                capture_output=True, text=True, timeout=8
-            )
-            cand = extract_json_candidate(c_res.stdout)
-            if not cand:
-                return None
-            rows_data = json.loads(cand)
-            rows = []
-            tot_usd = 0.0
-            tot_tokens = 0
-            for r in rows_data:
-                model = r.get("group", "other")
-                cost = float(r.get("costUsd", 0) or 0)
-                cost_pct = float(r.get("costPct", 0) or 0)
-                t_in = int(r.get("tokensIn", 0) or 0)
-                t_out = int(r.get("tokensOut", 0) or 0)
-                reqs = int(r.get("requests", 0) or 0)
-                tot_usd += cost
-                tot_tokens += (t_in + t_out)
-                rows.append(
-                    CostRow(
-                        model=model,
-                        cost_usd=cost,
-                        cost_pct=cost_pct,
-                        tokens_in=t_in,
-                        tokens_out=t_out,
-                        requests=reqs,
-                    )
-                )
-            rows.sort(key=lambda x: x.cost_usd, reverse=True)
-            return CostData(
-                range_label=settings.cost_range.upper(),
-                total_cost_usd=tot_usd,
-                total_tokens=tot_tokens,
-                rows=rows,
-            )
-        except Exception:
-            return None
+        return fetch_cost_data(settings, settings.cost_range)
 
     # 4. Usage Trend (30-day sparkline)
     def _fetch_trend() -> Optional[TrendData]:
         try:
-            t_req = urllib.request.Request(f"{base_url}/api/usage/analytics?period=30d", headers=headers)
+            t_req = urllib.request.Request(f"{base_url}/api/usage/analytics?range=30d", headers=headers)
             with urllib.request.urlopen(t_req, timeout=4.0) as t_resp:
                 t_data = json.loads(t_resp.read())
                 arr = t_data.get("dailyTrend", [])
@@ -943,91 +1050,66 @@ class ServerSupervisor:
 
 
 # ============================================================================
-# Vector Badge Icon Renderer (Sharp White Hub & Lines + Colored Points)
+# Decoupled System Tray Architecture (Paths, Icons, Integration)
 # ============================================================================
 
-def render_omniroute_pixmap(state: str, size: int = 64) -> QPixmap:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing, True)
-    p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+class TrayAssetPaths:
+    """Encapsulates all desktop asset paths, XDG directories, and autostart configuration.
 
-    scale = size / 24.0
-    center = QPointF(12.0 * scale, 12.0 * scale)
+    Decoupled from supervisor, CLI, and UI logic so ongoing refactoring cannot break
+    tray asset resolution or system integration.
+    """
+    @staticmethod
+    def theme_icon_dir() -> Path:
+        return XDG_DATA_HOME / "icons" / "hicolor" / "scalable" / "apps"
 
-    f = 0.82
-    outer_nodes = [
-        QPointF((12.0 - 8.0 * f) * scale, (12.0 - 7.0 * f) * scale),  # top-left
-        QPointF((12.0 + 8.0 * f) * scale, (12.0 - 7.0 * f) * scale),  # top-right
-        QPointF((12.0 - 8.0 * f) * scale, (12.0 + 7.0 * f) * scale),  # bottom-left
-        QPointF((12.0 + 8.0 * f) * scale, (12.0 + 7.0 * f) * scale),  # bottom-right
-        QPointF(12.0 * scale, (12.0 - 9.4 * f) * scale),              # top-center
-        QPointF(12.0 * scale, (12.0 + 9.4 * f) * scale),              # bottom-center
-    ]
+    @staticmethod
+    def desktop_entry_path() -> Path:
+        return XDG_DATA_HOME / "applications" / "omniroute-tray.desktop"
 
-    white = QColor("#ffffff")
-    if state in ("running", "adopted"):
-        points_color = QColor("#ff2b4d")
-    elif state == "starting":
-        points_color = QColor("#f59e0b")
-    else:
-        points_color = white
+    @staticmethod
+    def autostart_path() -> Path:
+        return AUTOSTART_FILE
 
-    # 1. Connecting lines
-    line_pen = QPen(white, 1.8 * scale, Qt.SolidLine, Qt.RoundCap)
-    p.setPen(line_pen)
-    for n in outer_nodes:
-        p.drawLine(center, n)
+    @staticmethod
+    def tray_executable() -> str:
+        installed = shutil.which(APP_ID)
+        if installed:
+            return installed
+        script = Path(__file__).resolve()
+        if script.is_file():
+            return str(script)
+        return str(Path.home() / ".local" / "bin" / APP_ID)
 
-    # 2. Center hub
-    p.setPen(Qt.NoPen)
-    p.setBrush(white)
-    p.drawEllipse(center, 3.0 * scale, 3.0 * scale)
+    @classmethod
+    def ensure_assets_installed(cls) -> None:
+        """Installs symbolic SVGs into the user icon theme and ensures theme paths are active."""
+        try:
+            d = cls.theme_icon_dir()
+            d.mkdir(parents=True, exist_ok=True)
+            for name, svg in (
+                (TrayIconManager.SYMBOLIC_NAME, TrayIconManager.SYMBOLIC_SVG),
+                (TrayIconManager.ACTIVE_SYMBOLIC_NAME, TrayIconManager.ACTIVE_SYMBOLIC_SVG),
+            ):
+                target = d / f"{name}.svg"
+                if not target.exists() or target.read_text() != svg:
+                    target.write_text(svg)
+            QIcon.setThemeSearchPaths(QIcon.themeSearchPaths())
+        except Exception as e:
+            log_line(f"Could not install symbolic tray icons: {e}")
 
-    # 3. 6 outer points
-    p.setBrush(points_color)
-    node_r = 2.4 * scale
-    for n in outer_nodes:
-        p.drawEllipse(n, node_r, node_r)
+    @classmethod
+    def is_autostart_enabled(cls) -> bool:
+        return cls.autostart_path().exists()
 
-    p.end()
-    return pm
-
-
-_TRAY_ICON_CACHE: Dict[str, QIcon] = {}
-
-
-def get_tray_icon(state: str = "stopped") -> QIcon:
-    """7 rasterizations per state; build each state's icon once, not per repaint."""
-    if state not in _TRAY_ICON_CACHE:
-        icon = QIcon()
-        for sz in (16, 22, 24, 32, 48, 64, 128):
-            icon.addPixmap(render_omniroute_pixmap(state, sz))
-        _TRAY_ICON_CACHE[state] = icon
-    return _TRAY_ICON_CACHE[state]
-
-
-# ============================================================================
-# Autostart Helpers
-# ============================================================================
-
-def tray_executable() -> str:
-    """How a desktop session should relaunch this tray."""
-    installed = shutil.which(APP_ID)
-    if installed:
-        return installed
-    script = Path(__file__).resolve()
-    if script.is_file():
-        return str(script)
-    return str(Path.home() / ".local" / "bin" / APP_ID)
-
-
-def autostart_enable() -> None:
-    AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
-    exe = tray_executable()
-    exec_line = f'"{exe}"' if " " in exe else exe
-    content = f"""[Desktop Entry]
+    @classmethod
+    def set_autostart(cls, enabled: bool) -> None:
+        p = cls.autostart_path()
+        if enabled:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            exe = cls.tray_executable()
+            exec_line = f'"{exe}"' if " " in exe else exe
+            content = f"""[Desktop Entry]
 Type=Application
 Name=OmniRoute Tray
 Comment=System tray supervisor and monitor for OmniRoute AI router
@@ -1038,16 +1120,95 @@ Categories=Utility;Development;Network;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
 """
-    AUTOSTART_FILE.write_text(content)
+            p.write_text(content)
+        else:
+            if p.exists():
+                p.unlink()
 
+
+class TrayIconManager:
+    """Manages official OmniRoute vector icons, crisp scaling, and raster fallbacks."""
+    SYMBOLIC_NAME = "omniroute-tray-symbolic"
+    ACTIVE_SYMBOLIC_NAME = "omniroute-tray-active-symbolic"
+
+    @classmethod
+    def _build_svg(cls, active: bool) -> str:
+        color = "#ff4d6d" if active else "#ffffff"
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">\n  <line x1="12" y1="12" x2="12" y2="4.5" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <line x1="12" y1="12" x2="12" y2="19.5" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <line x1="12" y1="12" x2="5.5" y2="7.0" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <line x1="12" y1="12" x2="18.5" y2="7.0" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <line x1="12" y1="12" x2="5.5" y2="17.0" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <line x1="12" y1="12" x2="18.5" y2="17.0" stroke="{color}" stroke-width="1.8" stroke-linecap="round"/>\n  <circle cx="12" cy="12" r="2.8" fill="{color}"/>\n  <circle cx="12" cy="4.5" r="1.8" fill="{color}"/>\n  <circle cx="12" cy="19.5" r="1.8" fill="{color}"/>\n  <circle cx="5.5" cy="7.0" r="2.4" fill="{color}"/>\n  <circle cx="18.5" cy="7.0" r="2.4" fill="{color}"/>\n  <circle cx="5.5" cy="17.0" r="2.4" fill="{color}"/>\n  <circle cx="18.5" cy="17.0" r="2.4" fill="{color}"/>\n</svg>'.format(color=color)
+
+    SYMBOLIC_SVG = ""
+    ACTIVE_SYMBOLIC_SVG = ""
+    _CACHE: Dict[str, QIcon] = {}
+
+    @classmethod
+    def get_icon(cls, state: str = "stopped") -> QIcon:
+        if state in cls._CACHE:
+            return cls._CACHE[state]
+
+        active = state in ("running", "adopted", "starting")
+        name = cls.ACTIVE_SYMBOLIC_NAME if active else cls.SYMBOLIC_NAME
+
+        icon = QIcon.fromTheme(name)
+        if icon.isNull():
+            icon = QIcon()
+        for sz in (16, 22, 24, 32, 48, 64, 128):
+            icon.addPixmap(cls.render_pixmap(state, sz))
+
+        cls._CACHE[state] = icon
+        return icon
+
+    @classmethod
+    def render_pixmap(cls, state: str, size: int = 64) -> QPixmap:
+        active = state in ("running", "adopted", "starting")
+        svg_content = cls._build_svg(active)
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        if QSvgRenderer is not None:
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            renderer = QSvgRenderer(QByteArray(svg_content.encode("utf-8")))
+            renderer.render(p)
+            p.end()
+        return pm
+
+TrayIconManager.SYMBOLIC_SVG = TrayIconManager._build_svg(False)
+TrayIconManager.ACTIVE_SYMBOLIC_SVG = TrayIconManager._build_svg(True)
+
+def _panel_foreground() -> QColor:
+    """Current color-scheme foreground, so the fallback glyph adapts to the panel."""
+    app = QApplication.instance()
+    if app is not None:
+        c = app.palette().color(QPalette.WindowText)
+        if c.isValid() and c.alpha() > 0:
+            return c
+    return QColor("#ffffff")
+
+
+# Backward compatibility bindings
+def ensure_tray_icon_installed() -> None:
+    TrayAssetPaths.ensure_assets_installed()
+
+def get_tray_icon(state: str = "stopped") -> QIcon:
+    return TrayIconManager.get_icon(state)
+
+def render_omniroute_pixmap(state: str, size: int = 64) -> QPixmap:
+    return TrayIconManager.render_pixmap(state, size)
+
+def theme_icon_dir() -> Path:
+    return TrayAssetPaths.theme_icon_dir()
+
+def tray_executable() -> str:
+    return TrayAssetPaths.tray_executable()
+
+def autostart_enable() -> None:
+    TrayAssetPaths.set_autostart(True)
 
 def autostart_disable() -> None:
-    if AUTOSTART_FILE.exists():
-        AUTOSTART_FILE.unlink()
-
+    TrayAssetPaths.set_autostart(False)
 
 def autostart_is_enabled() -> bool:
-    return AUTOSTART_FILE.exists()
+    return TrayAssetPaths.is_autostart_enabled()
 
 
 # ============================================================================
@@ -1874,6 +2035,66 @@ class Bridge(QObject):
     update_available = Signal(str, str)
 
 
+
+class TrayIntegrationService:
+    """Decoupled manager for QSystemTrayIcon lifecycle, context menu, and tooltip.
+
+    Keeps system tray registration and context menu logic completely independent
+    from core supervisor and popover implementations.
+    """
+    def __init__(self, callbacks: dict, parent=None):
+        self.callbacks = callbacks
+        self.tray = QSystemTrayIcon(parent)
+        TrayAssetPaths.ensure_assets_installed()
+        self.tray.setIcon(TrayIconManager.get_icon("stopped"))
+        self.tray.setToolTip("OmniRoute")
+        self.menu = QMenu()
+        self._build_context_menu()
+        self.tray.setContextMenu(self.menu)
+        self.tray.activated.connect(self._on_tray_activated)
+
+    def _build_context_menu(self):
+        self.status_action = self.menu.addAction("Status: Stopped")
+        self.status_action.setEnabled(False)
+        self.menu.addSeparator()
+        self.start_action = self.menu.addAction("Start server", self.callbacks.get("start"))
+        self.stop_action = self.menu.addAction("Stop server", self.callbacks.get("stop"))
+        self.menu.addAction("Restart server", self.callbacks.get("restart"))
+        self.menu.addAction("Force-stop all OmniRoute processes…", self.callbacks.get("force_stop"))
+        self.menu.addSeparator()
+        self.menu.addAction("Open Dashboard", self.callbacks.get("open_dashboard"))
+        self.menu.addAction("View server logs", self.callbacks.get("open_logs"))
+        self.menu.addSeparator()
+        self.menu.addAction("Quit", self.callbacks.get("quit"))
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
+        if reason == QSystemTrayIcon.Trigger:
+            cb = self.callbacks.get("toggle_popover")
+            if cb:
+                cb(self.tray.geometry())
+
+    def update_state(self, state: ServerState):
+        lbl = STATE_LABELS.get(state, str(state))
+        self.status_action.setText(f"Status: {lbl}")
+        if state in (ServerState.RUNNING, ServerState.ADOPTED):
+            state_key = "running"
+        elif state == ServerState.STARTING:
+            state_key = "starting"
+        else:
+            state_key = "stopped"
+        self.tray.setIcon(TrayIconManager.get_icon(state_key))
+        self.tray.setToolTip(f"OmniRoute — {lbl}")
+        running = (state in (ServerState.RUNNING, ServerState.ADOPTED))
+        self.start_action.setEnabled(not running)
+        self.stop_action.setEnabled(running)
+
+    def show(self):
+        self.tray.show()
+
+    def geometry(self):
+        return self.tray.geometry()
+
+
 class TrayApp:
     def __init__(self):
         ensure_dirs()
@@ -1901,6 +2122,7 @@ class TrayApp:
         )
 
         self.tray = QSystemTrayIcon()
+        ensure_tray_icon_installed()
         self.tray.setIcon(get_tray_icon("stopped"))
         self.tray.setToolTip("OmniRoute")
 
@@ -1940,6 +2162,9 @@ class TrayApp:
         self.menu.addSeparator()
         self.menu.addAction("Open Dashboard", lambda: webbrowser.open(self.settings.api_base))
         self.menu.addAction("View server logs", self._open_logs)
+        self.menu.addSeparator()
+        self.menu.addAction("Check server updates…", self._background_update_check)
+        self.menu.addAction("Update tray app…", self._manual_update_tray)
         self.menu.addSeparator()
         self.menu.addAction("Quit", self._quit)
 
@@ -2014,6 +2239,15 @@ class TrayApp:
             QSystemTrayIcon.Information,
             7000
         )
+
+    def _manual_update_tray(self):
+        self.tray.showMessage("OmniRoute Tray", "Updating tray from GitHub repository…", QSystemTrayIcon.Information, 3000)
+        def _run():
+            res = self_update_tray()
+            msg = res.get("message", "Tray update completed")
+            icon = QSystemTrayIcon.Information if res.get("success") else QSystemTrayIcon.Warning
+            self.tray.showMessage("OmniRoute Tray", msg, icon, 5000)
+        threading.Thread(target=_run, daemon=True).start()
 
     def _force_stop_clicked(self):
         port = get_port_from_url(self.settings.api_base)
@@ -2096,6 +2330,29 @@ def main():
         else:
             autostart_enable()
             print("AUTOSTART_ENABLED")
+        sys.exit(0)
+
+    if "--update-tray" in sys.argv:
+        res = self_update_tray()
+        print(json.dumps(res))
+        sys.exit(0 if res.get("success") else 1)
+
+    if "--cost" in sys.argv:
+        settings = Settings.load()
+        range_val = settings.cost_range
+        if "--range" in sys.argv:
+            idx = sys.argv.index("--range")
+            if idx + 1 < len(sys.argv):
+                range_val = sys.argv[idx + 1]
+        elif "--period" in sys.argv:
+            idx = sys.argv.index("--period")
+            if idx + 1 < len(sys.argv):
+                range_val = sys.argv[idx + 1]
+        cost_data = fetch_cost_data(settings, range_val)
+        if cost_data:
+            print(json.dumps(asdict(cost_data)))
+        else:
+            print(json.dumps({"range_label": range_val.upper(), "total_cost_usd": 0.0, "total_tokens": 0, "rows": []}))
         sys.exit(0)
 
     if "--snapshot" in sys.argv:

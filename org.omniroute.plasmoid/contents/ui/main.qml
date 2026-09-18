@@ -91,6 +91,9 @@ PlasmoidItem {
     property var recentLogsModel: []
     property bool autostartEnabled: false
     property string updateStatus: "Up to date (v3.8.50)"
+    property string trayUpdateStatus: "GitHub (main)"
+    property bool isUpdatingTray: false
+
 
     // ========================================================================
     // DATA SOURCE (FOR EXECUTING CLI COMMANDS)
@@ -104,7 +107,28 @@ PlasmoidItem {
             var stdout = data["stdout"] || "";
             disconnectSource(sourceName);
 
-            if (sourceName.indexOf("omniroute_snapshot") !== -1 || sourceName.indexOf("--snapshot") !== -1) {
+            if (sourceName.indexOf("--update-tray") !== -1) {
+                root.isUpdatingTray = false;
+                var stderr = data["stderr"] || "";
+                try {
+                    var start = stdout.indexOf("{");
+                    var end = stdout.lastIndexOf("}");
+                    if (start !== -1 && end !== -1) {
+                        var parsed = JSON.parse(stdout.substring(start, end + 1));
+                        root.trayUpdateStatus = parsed.message || (parsed.success ? "Updated!" : "Update failed");
+                    } else if (stdout.trim()) {
+                        root.trayUpdateStatus = stdout.trim();
+                    } else if (stderr.trim()) {
+                        root.trayUpdateStatus = stderr.trim();
+                    } else {
+                        root.trayUpdateStatus = "Update finished";
+                    }
+                } catch(e) {
+                    root.trayUpdateStatus = "Updated!";
+                }
+            } else if (sourceName.indexOf("--cost") !== -1) {
+                applyCost(stdout);
+            } else if (sourceName.indexOf("omniroute_snapshot") !== -1 || sourceName.indexOf("--snapshot") !== -1) {
                 applySnapshot(stdout);
             } else if (sourceName.indexOf("--stop") !== -1) {
                 root.isRunning = false;
@@ -124,6 +148,31 @@ PlasmoidItem {
 
     function runCmd(cmd) {
         execSource.connectSource(cmd);
+    }
+
+    function applyCost(stdout) {
+        if (!stdout || stdout.length === 0) return;
+        var start = stdout.indexOf("{");
+        var end = stdout.lastIndexOf("}");
+        if (start === -1 || end === -1 || end <= start) return;
+        try {
+            var parsed = JSON.parse(stdout.substring(start, end + 1));
+            if (!parsed) return;
+            root.costTotalUsd = parsed.total_cost_usd || 0.0;
+            root.costTotalTokens = parsed.total_tokens || 0;
+            var rawRows = parsed.rows || [];
+            var rList = [];
+            for (var r = 0; r < rawRows.length; r++) {
+                rList.push({
+                    model: rawRows[r].model,
+                    costUsd: rawRows[r].cost_usd,
+                    costPct: rawRows[r].cost_pct,
+                    tokensIn: rawRows[r].tokens_in,
+                    tokensOut: rawRows[r].tokens_out
+                });
+            }
+            root.costRowsModel = rList.slice(0, 5);
+        } catch(e) {}
     }
 
     function applySnapshot(stdout) {
@@ -147,7 +196,10 @@ PlasmoidItem {
                     root.recentLogsModel = parsed.recent_logs || [];
 
                     if (parsed.cost) {
-                        root.costTotalUsd = parsed.cost.total_cost_usd || 0.0;
+                        var snapRange = parsed.cost.range_label ? parsed.cost.range_label.toLowerCase() : "";
+                        var curRange = root.costRange ? root.costRange.toLowerCase() : "30d";
+                        if (!snapRange || snapRange === curRange) {
+                            root.costTotalUsd = parsed.cost.total_cost_usd || 0.0;
                         root.costTotalTokens = parsed.cost.total_tokens || 0;
                         var rawRows = parsed.cost.rows || [];
                         var rList = [];
@@ -161,6 +213,7 @@ PlasmoidItem {
                             });
                         }
                         root.costRowsModel = rList.slice(0, 5);
+                        }
                     }
 
                     if (parsed.trend) {
@@ -228,11 +281,18 @@ PlasmoidItem {
 
     function fetchFullSnapshot(period) {
         var p = period || root.costRange || "30d";
-        runCmd("omniroute-tray --snapshot --period " + p + " > /tmp/omniroute_snapshot.json.tmp && mv /tmp/omniroute_snapshot.json.tmp /tmp/omniroute_snapshot.json && cat /tmp/omniroute_snapshot.json");
+        runCmd("~/.local/bin/omniroute-tray --snapshot --period " + p + " > /tmp/omniroute_snapshot.json.tmp && mv /tmp/omniroute_snapshot.json.tmp /tmp/omniroute_snapshot.json && cat /tmp/omniroute_snapshot.json");
     }
 
     function fetchCost(period) {
-        fetchFullSnapshot(period);
+        var p = period || root.costRange || "30d";
+        runCmd("~/.local/bin/omniroute-tray --cost --range " + p + " # " + Date.now());
+    }
+
+    function updateTray() {
+        root.isUpdatingTray = true;
+        root.trayUpdateStatus = "Pulling latest code…";
+        runCmd("~/.local/bin/omniroute-tray --update-tray # " + Date.now());
     }
 
     function checkForUpdates() {

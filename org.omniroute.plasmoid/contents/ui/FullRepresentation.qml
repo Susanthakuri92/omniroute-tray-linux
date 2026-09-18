@@ -16,16 +16,15 @@ Item {
     Layout.preferredWidth: 380
     Layout.maximumWidth: 420
 
-    // Dynamic height matching content of active tab (no scrollbar needed)
-    readonly property real headerHeight: (headerRow ? headerRow.implicitHeight : 22) +
-                                         (navRow ? navRow.implicitHeight : 26) +
+    readonly property real headerHeight: (headerRow ? headerRow.implicitHeight : 20) +
+                                         (navRow ? navRow.implicitHeight : 24) +
                                          1 + (contentCol.spacing * 2)
-    readonly property real footerHeight: 1 + (footerRow ? footerRow.implicitHeight : 22) +
+    readonly property real footerHeight: 1 + (footerRow ? footerRow.implicitHeight : 20) +
                                          (contentCol.spacing * 2)
-    readonly property real marginsHeight: 24
+    readonly property real marginsHeight: 16
 
-    // Fixed height to prevent UI from shifting when switching tabs
-    readonly property real activeTabHeight: 400
+    // Fixed uniform height across all 4 tabs to prevent UI shifting
+    readonly property real activeTabHeight: 380
 
     readonly property real desiredHeight: headerHeight + activeTabHeight + footerHeight + marginsHeight
 
@@ -35,14 +34,13 @@ Item {
     Layout.maximumHeight: 780
     height: Layout.preferredHeight
 
-    // Server on first tab by default
-    property string activeTab: "supervisor" // "supervisor", "monitor", "doctor", "settings"
+    property string activeTab: "supervisor" // "supervisor", "monitor", "doctor"
 
     ColumnLayout {
         id: contentCol
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 10
+        anchors.margins: 8
+        spacing: 8
 
         // ====================================================================
         // CARD HEADER & STATUS
@@ -50,7 +48,7 @@ Item {
         RowLayout {
             id: headerRow
             Layout.fillWidth: true
-            spacing: 8
+            spacing: 6
 
             // Status dot
             Rectangle {
@@ -60,7 +58,7 @@ Item {
                 radius: 4
                 color: {
                     if (plasmoidItem && plasmoidItem.serverActionState !== "") return "#f59e0b";
-                    return (plasmoidItem && plasmoidItem.isRunning) ? "#22c55e" : "#ff2b4d";
+                    return (plasmoidItem && plasmoidItem.isRunning) ? "#10b981" : "#ef4444";
                 }
                 SequentialAnimation on opacity {
                     running: plasmoidItem && plasmoidItem.serverActionState !== ""
@@ -70,10 +68,9 @@ Item {
                 }
             }
 
-            // Title & status
             Text {
                 text: "OmniRoute"
-                font.pixelSize: 14
+                font.pixelSize: 13
                 font.weight: Font.Bold
                 color: "#fafafa"
             }
@@ -84,26 +81,26 @@ Item {
                     if (plasmoidItem.serverActionState === "starting") return "Starting…";
                     if (plasmoidItem.serverActionState === "stopping") return "Stopping…";
                     if (plasmoidItem.serverActionState === "restarting") return "Restarting…";
-                    return plasmoidItem.isRunning ? 
-                          ("Running (:" + (plasmoidItem.serverPid ? plasmoidItem.serverPid : "20128") + ")") : 
+                    return plasmoidItem.isRunning ?
+                          ("Running (:" + (plasmoidItem.serverPid ? plasmoidItem.serverPid : "20128") + ")") :
                           "Stopped";
                 }
                 font.pixelSize: 11
                 color: {
-                    if (!plasmoidItem) return "#ff8095";
+                    if (!plasmoidItem) return "#f87171";
                     if (plasmoidItem.serverActionState !== "") return "#fbbf24";
-                    return plasmoidItem.isRunning ? "#22c55e" : "#ff8095";
+                    return plasmoidItem.isRunning ? "#34d399" : "#f87171";
                 }
             }
 
             Item { Layout.fillWidth: true }
 
-            // Quick logs
+            // Quick logs icon
             Rectangle {
                 width: 24
                 height: 22
                 radius: 4
-                color: logsArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
+                color: logsArea.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : "transparent"
                 Text {
                     anchors.centerIn: parent
                     text: "📄"
@@ -121,11 +118,9 @@ Item {
                 QQC2.ToolTip.text: "Open Logs"
             }
 
-            // Keep Open / Pin button - [Removed]
-
             Text {
                 text: plasmoidItem ? plasmoidItem.serverVersion : "v3.8.50"
-                font.pixelSize: 11
+                font.pixelSize: 10
                 color: "#71717a"
             }
         }
@@ -142,22 +137,21 @@ Item {
                 model: [
                     { id: "supervisor", label: "🖥️ Server" },
                     { id: "monitor", label: "📊 Monitor" },
-                    { id: "doctor", label: "🩺 Doctor & Logs" },
-                    { id: "settings", label: "⚙ Settings" }
+                    { id: "doctor", label: "🩺 Doctor & Logs" }
                 ]
 
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 26
+                    height: 24
                     radius: 5
                     color: cardRoot.activeTab === modelData.id ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.03)
-                    border.color: cardRoot.activeTab === modelData.id ? Qt.rgba(255, 255, 255, 0.20) : "transparent"
+                    border.color: cardRoot.activeTab === modelData.id ? Qt.rgba(255, 255, 255, 0.18) : "transparent"
                     border.width: 1
 
                     Text {
                         anchors.centerIn: parent
                         text: modelData.label
-                        font.pixelSize: 11
+                        font.pixelSize: 10
                         font.weight: cardRoot.activeTab === modelData.id ? Font.Bold : Font.Normal
                         color: cardRoot.activeTab === modelData.id ? "#fafafa" : "#a1a1aa"
                     }
@@ -174,7 +168,7 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Qt.rgba(255, 255, 255, 0.10)
+            color: Qt.rgba(255, 255, 255, 0.08)
         }
 
         // ====================================================================
@@ -183,247 +177,382 @@ Item {
         ColumnLayout {
             id: supervisorTab
             Layout.fillWidth: true
-            Layout.fillHeight: true
             Layout.preferredHeight: cardRoot.activeTabHeight
             clip: true
-            spacing: 12
+            spacing: 8
             visible: cardRoot.activeTab === "supervisor"
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 84
-                        radius: 6
-                        color: Qt.rgba(255, 255, 255, 0.05)
-                        border.color: Qt.rgba(255, 255, 255, 0.08)
-                        border.width: 1
+            // 1. Status Overview Card
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 74
+                radius: 8
+                color: Qt.rgba(255, 255, 255, 0.04)
+                border.color: Qt.rgba(255, 255, 255, 0.08)
+                border.width: 1
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 4
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 4
 
-                            RowLayout {
-                                Text {
-                                    text: "Supervisor Status: "
-                                    font.pixelSize: 11
-                                    color: "#a1a1aa"
-                                }
-                                Text {
-                                    text: {
-                                        if (!plasmoidItem) return "Offline";
-                                        if (plasmoidItem.serverActionState === "starting") return "Starting server...";
-                                        if (plasmoidItem.serverActionState === "stopping") return "Stopping server...";
-                                        if (plasmoidItem.serverActionState === "restarting") return "Restarting server...";
-                                        return plasmoidItem.isRunning ? "Active" : "Offline";
-                                    }
-                                    font.pixelSize: 11
-                                    font.weight: Font.Bold
-                                    color: {
-                                        if (!plasmoidItem) return "#ff2b4d";
-                                        if (plasmoidItem.serverActionState !== "") return "#f59e0b";
-                                        return plasmoidItem.isRunning ? "#22c55e" : "#ff2b4d";
-                                    }
-                                }
+                    RowLayout {
+                        Text {
+                            text: "Supervisor Status: "
+                            font.pixelSize: 11
+                            color: "#a1a1aa"
+                        }
+                        Text {
+                            text: {
+                                if (!plasmoidItem) return "Offline";
+                                if (plasmoidItem.serverActionState === "starting") return "Starting server...";
+                                if (plasmoidItem.serverActionState === "stopping") return "Stopping server...";
+                                if (plasmoidItem.serverActionState === "restarting") return "Restarting server...";
+                                return plasmoidItem.isRunning ? "Active" : "Offline";
                             }
-
-                            RowLayout {
-                                Text {
-                                    text: "Server Process: "
-                                    font.pixelSize: 11
-                                    color: "#a1a1aa"
-                                }
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.isRunning && plasmoidItem.serverPid) ? ("PID " + plasmoidItem.serverPid + " · Port 20128") : "Port 20128 · Standby"
-                                    font.pixelSize: 11
-                                    font.family: "monospace"
-                                    color: "#fafafa"
-                                }
-                            }
-
-                            RowLayout {
-                                Text {
-                                    text: "Mode: "
-                                    font.pixelSize: 11
-                                    color: "#a1a1aa"
-                                }
-                                Text {
-                                    text: "Local AI Gateway · Background daemon"
-                                    font.pixelSize: 11
-                                    color: "#a1a1aa"
-                                }
+                            font.pixelSize: 11
+                            font.weight: Font.Bold
+                            color: {
+                                if (!plasmoidItem) return "#ef4444";
+                                if (plasmoidItem.serverActionState !== "") return "#f59e0b";
+                                return plasmoidItem.isRunning ? "#10b981" : "#ef4444";
                             }
                         }
                     }
 
-                    // Server lifecycle buttons (Primary Start/Stop on LEFT, Restart on RIGHT)
                     RowLayout {
-                        id: btnRow
-                        Layout.fillWidth: true
-                        spacing: 0
+                        Text {
+                            text: "Server Process: "
+                            font.pixelSize: 11
+                            color: "#a1a1aa"
+                        }
+                        Text {
+                            text: (plasmoidItem && plasmoidItem.isRunning && plasmoidItem.serverPid) ?
+                                  ("PID " + plasmoidItem.serverPid + " · Port 20128") :
+                                  "Port 20128 · Standby"
+                            font.pixelSize: 11
+                            font.family: "monospace"
+                            color: "#fafafa"
+                        }
+                    }
 
-                        readonly property bool isBusy: plasmoidItem && plasmoidItem.serverActionState !== ""
+                    RowLayout {
+                        Text {
+                            text: "Mode: "
+                            font.pixelSize: 11
+                            color: "#a1a1aa"
+                        }
+                        Text {
+                            text: "Local AI Gateway · Background daemon"
+                            font.pixelSize: 11
+                            color: "#71717a"
+                        }
+                    }
+                }
+            }
 
-                        // 1. PRIMARY ACTION (LEFT): Start / Stop Server
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 48
-                            radius: 6
+            // 2. Modern & Professional Server Action Buttons
+            RowLayout {
+                id: btnRow
+                Layout.fillWidth: true
+                spacing: 8
+
+                readonly property bool isBusy: plasmoidItem && plasmoidItem.serverActionState !== ""
+                readonly property bool isRunning: plasmoidItem && plasmoidItem.isRunning
+
+                // PRIMARY ACTION (LEFT): Start / Stop Server
+                Rectangle {
+                    id: startStopBtn
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 38
+                    radius: 10
+
+                    color: {
+                        if (btnRow.isBusy) return Qt.rgba(245, 158, 11, 0.12);
+                        if (btnRow.isRunning) {
+                            return mouseAreaStartStop.containsMouse ?
+                                   Qt.rgba(239, 68, 68, 0.16) :
+                                   Qt.rgba(239, 68, 68, 0.08);
+                        }
+                        return mouseAreaStartStop.containsMouse ?
+                               Qt.rgba(16, 185, 129, 0.16) :
+                               Qt.rgba(16, 185, 129, 0.08);
+                    }
+
+                    border.color: {
+                        if (btnRow.isBusy) return Qt.rgba(245, 158, 11, 0.45);
+                        if (btnRow.isRunning) {
+                            return mouseAreaStartStop.containsMouse ?
+                                   Qt.rgba(239, 68, 68, 0.50) :
+                                   Qt.rgba(239, 68, 68, 0.25);
+                        }
+                        return mouseAreaStartStop.containsMouse ?
+                               Qt.rgba(16, 185, 129, 0.50) :
+                               Qt.rgba(16, 185, 129, 0.25);
+                    }
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Text {
+                            text: {
+                                if (btnRow.isBusy) return "↻";
+                                return btnRow.isRunning ? "■" : "▶";
+                            }
+                            font.pixelSize: btnRow.isRunning ? 13 : 11
                             color: {
-                                if (!plasmoidItem) return "#1a3a20";
-                                if (plasmoidItem.serverActionState === "starting") return "#2e2413";
-                                if (plasmoidItem.serverActionState === "stopping") return "#2e1518";
-                                if (plasmoidItem.serverActionState === "restarting") return "#2e2413";
-                                return plasmoidItem.isRunning ? "#3a1b20" : "#1a3a20";
-                            }
-                            border.color: {
-                                if (!plasmoidItem) return "#22c55e";
-                                if (plasmoidItem.serverActionState !== "") return "#f59e0b";
-                                return plasmoidItem.isRunning ? "#ff2b4d" : "#22c55e";
-                            }
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 6
-
-                                Text {
-                                    visible: btnRow.isBusy
-                                    text: "⟳"
-                                    font.pixelSize: 13
-                                    color: "#fbbf24"
-                                    RotationAnimation on rotation {
-                                        running: btnRow.isBusy
-                                        loops: Animation.Infinite
-                                        from: 0
-                                        to: 360
-                                        duration: 750
-                                    }
-                                }
-
-                                Text {
-                                    text: {
-                                        if (!plasmoidItem) return "▶ Start Server";
-                                        if (plasmoidItem.serverActionState === "starting") return "Starting...";
-                                        if (plasmoidItem.serverActionState === "stopping") return "Stopping...";
-                                        if (plasmoidItem.serverActionState === "restarting") return "Stopping...";
-                                        return plasmoidItem.isRunning ? "⏹ Stop Server" : "▶ Start Server";
-                                    }
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    color: {
-                                        if (!plasmoidItem) return "#4ade80";
-                                        if (plasmoidItem.serverActionState !== "") return "#fbbf24";
-                                        return plasmoidItem.isRunning ? "#ff8095" : "#4ade80";
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: btnRow.isBusy ? Qt.ForbiddenCursor : Qt.PointingHandCursor
-                                enabled: !btnRow.isBusy
-                                onClicked: {
-                                    if (!plasmoidItem || btnRow.isBusy) return;
-                                    if (plasmoidItem.isRunning) plasmoidItem.stopServer();
-                                    else plasmoidItem.startServer();
-                                }
+                                if (btnRow.isBusy) return "#fbbf24";
+                                return btnRow.isRunning ? "#ef4444" : "#10b981";
                             }
                         }
 
-                        // 2. RESTART BUTTON (RIGHT)
+                        Text {
+                            text: {
+                                if (!plasmoidItem) return "Start Server";
+                                if (btnRow.isBusy) return "Applying...";
+                                return btnRow.isRunning ? "Stop Server" : "Start Server";
+                            }
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: {
+                                if (btnRow.isBusy) return "#fef3c7";
+                                return btnRow.isRunning ? "#fee2e2" : "#ecfdf5";
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: mouseAreaStartStop
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: btnRow.isBusy ? Qt.ForbiddenCursor : Qt.PointingHandCursor
+                        onClicked: {
+                            if (!plasmoidItem || btnRow.isBusy) return;
+                            if (plasmoidItem.isRunning) plasmoidItem.stopServer();
+                            else plasmoidItem.startServer();
+                        }
+                    }
+                }
+
+                // RESTART BUTTON (RIGHT): Polished Neutral Utility Theme
+                Rectangle {
+                    id: restartBtn
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 38
+                    radius: 10
+
+                    color: {
+                        if (plasmoidItem && plasmoidItem.serverActionState === "restarting") {
+                            return Qt.rgba(245, 158, 11, 0.12);
+                        }
+                        return restartArea.containsMouse ?
+                               Qt.rgba(255, 255, 255, 0.10) :
+                               Qt.rgba(255, 255, 255, 0.04);
+                    }
+
+                    border.color: {
+                        if (plasmoidItem && plasmoidItem.serverActionState === "restarting") {
+                            return Qt.rgba(245, 158, 11, 0.45);
+                        }
+                        return restartArea.containsMouse ?
+                               Qt.rgba(255, 255, 255, 0.22) :
+                               Qt.rgba(255, 255, 255, 0.10);
+                    }
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Text {
+                            text: "↻"
+                            font.pixelSize: 13
+                            color: {
+                                if (plasmoidItem && plasmoidItem.serverActionState === "restarting") {
+                                    return "#fbbf24";
+                                }
+                                return restartArea.containsMouse ? "#ffffff" : "#a1a1aa";
+                            }
+                        }
+                        Text {
+                            text: (plasmoidItem && plasmoidItem.serverActionState === "restarting") ?
+                                  "Restarting..." : "Restart"
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: {
+                                if (plasmoidItem && plasmoidItem.serverActionState === "restarting") {
+                                    return "#fbbf24";
+                                }
+                                return restartArea.containsMouse ? "#ffffff" : "#e4e4e7";
+                            }
+                        }
+                    }
+                    MouseArea {
+                        id: restartArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: btnRow.isBusy ? Qt.ForbiddenCursor : Qt.PointingHandCursor
+                        enabled: !btnRow.isBusy
+                        onClicked: { if (plasmoidItem) plasmoidItem.restartServer(); }
+                    }
+                }
+            }
+
+            // 3. Autostart Preference Card
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                radius: 8
+                color: Qt.rgba(255, 255, 255, 0.04)
+                border.color: Qt.rgba(255, 255, 255, 0.08)
+                border.width: 1
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+
+                    Text {
+                        text: "Launch Omniroute server automatically on login"
+                        font.pixelSize: 11
+                        color: "#d4d4d8"
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.CheckBox {
+                        checked: plasmoidItem ? plasmoidItem.autostartEnabled : false
+                        onClicked: { if (plasmoidItem) plasmoidItem.toggleAutostart(); }
+                    }
+                }
+            }
+
+            // 4. Updates Card (Server & Tray App)
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 88
+                radius: 8
+                color: Qt.rgba(255, 255, 255, 0.04)
+                border.color: Qt.rgba(255, 255, 255, 0.08)
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+
+                    // Row 1: OmniRoute Server
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        ColumnLayout {
+                            spacing: 1
+                            Text {
+                                text: "OmniRoute Server"
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                                color: "#fafafa"
+                            }
+                            Text {
+                                text: plasmoidItem ? plasmoidItem.updateStatus : "v3.8.50"
+                                font.pixelSize: 10
+                                color: "#71717a"
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
                         Rectangle {
-                            Layout.preferredWidth: 64
-                            Layout.preferredHeight: 48
-                            radius: 6
-                            color: restartArea.containsMouse ? "#2e2413" : "#27272a"
-                            border.color: "#f59e0b"
+                            width: 86
+                            height: 24
+                            radius: 5
+                            color: updateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: updateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
                             border.width: 1
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "↻"
-                                font.pixelSize: 18
-                                color: "#f59e0b"
+                                text: "Check Server"
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                                color: "#fafafa"
                             }
+
                             MouseArea {
-                                id: restartArea
+                                id: updateBtnArea
                                 anchors.fill: parent
-                                cursorShape: btnRow.isBusy ? Qt.ForbiddenCursor : Qt.PointingHandCursor
-                                enabled: !btnRow.isBusy
-                                onClicked: { if (plasmoidItem) plasmoidItem.restartServer(); }
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
                             }
                         }
                     }
 
-
-                    // Start on login
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
-                        radius: 6
-                        color: Qt.rgba(255, 255, 255, 0.05)
-                        border.color: Qt.rgba(255, 255, 255, 0.08)
-                        border.width: 1
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            QQC2.CheckBox {
-                                text: "Launch OmniRoute automatically on login"
-                                checked: plasmoidItem ? plasmoidItem.autostartEnabled : false
-                                onClicked: { if (plasmoidItem) plasmoidItem.toggleAutostart(); }
-                            }
-                        }
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.06)
                     }
 
-                    // Auto-update
-                    Rectangle {
+                    // Row 2: OmniRoute Tray App
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 52
-                        radius: 6
-                        color: Qt.rgba(255, 255, 255, 0.05)
-                        border.color: Qt.rgba(255, 255, 255, 0.08)
-                        border.width: 1
+                        spacing: 8
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            ColumnLayout {
-                                Text {
-                                    text: "Auto-Update"
-                                    font.pixelSize: 11
-                                    font.weight: Font.Bold
-                                    color: "#fafafa"
-                                }
-                                Text {
-                                    text: plasmoidItem ? plasmoidItem.updateStatus : "v3.8.50"
-                                    font.pixelSize: 10
-                                    color: "#a1a1aa"
-                                }
+                        ColumnLayout {
+                            spacing: 1
+                            Text {
+                                text: "OmniRoute Tray"
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                                color: "#fafafa"
                             }
-                            Item { Layout.fillWidth: true }
-                            Rectangle {
-                                width: 84
-                                height: 26
-                                radius: 4
-                                color: Qt.rgba(255, 255, 255, 0.08)
-                                border.color: Qt.rgba(255, 255, 255, 0.12)
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Check Now"
-                                    font.pixelSize: 10
-                                    color: "#fafafa"
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
-                                }
+                            Text {
+                                text: plasmoidItem ? plasmoidItem.trayUpdateStatus : "GitHub (main)"
+                                font.pixelSize: 10
+                                color: "#71717a"
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            width: 86
+                            height: 24
+                            radius: 5
+                            color: trayUpdateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: trayUpdateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating..." : "Update Tray"
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                                color: "#fafafa"
+                            }
+
+                            MouseArea {
+                                id: trayUpdateBtnArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { if (plasmoidItem) plasmoidItem.updateTray(); }
                             }
                         }
                     }
+                }
+            }
 
+            Item { Layout.fillHeight: true }
         }
 
         // ====================================================================
@@ -440,41 +569,62 @@ Item {
             QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
 
             contentWidth: availableWidth
-            contentHeight: monitorTab.implicitHeight
+            contentHeight: monitorTab.implicitHeight + 16
 
             ColumnLayout {
                 id: monitorTab
                 width: monitorScrollView.availableWidth
-                spacing: 12
+                spacing: 8
 
-                    // Health status band
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 28
-                        radius: 5
-                        color: Qt.rgba(255, 255, 255, 0.05)
-                        border.color: Qt.rgba(255, 255, 255, 0.08)
-                        border.width: 1
+                // Section: Health Status
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 62
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            Text {
-                                text: (plasmoidItem ? plasmoidItem.healthActiveProviders : 0) + " of " + 
-                                      (plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0) + " providers active · " +
-                                      (plasmoidItem ? plasmoidItem.healthBreakersOpen : 0) + " breakers open"
-                                font.pixelSize: 11
-                                color: "#d4d4d8"
-                            }
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 3
+
+                        Text {
+                            text: "SYSTEM HEALTH"
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                            color: "#a1a1aa"
+                        }
+
+                        Text {
+                            text: (plasmoidItem ? plasmoidItem.healthActiveProviders : 0) + " of " +
+                                  (plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0) + " providers active · " +
+                                  (plasmoidItem ? plasmoidItem.healthBreakersOpen : 0) + " breakers open"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            color: "#fafafa"
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         }
                     }
+                }
 
-                    // 1. Provider Quota Bars
+                // 1. Provider Quota Bars
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: quotaLayout.implicitHeight + 16
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
+
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        visible: (plasmoidItem ? plasmoidItem.providerQuotasModel.length : 0) > 0
+                        id: quotaLayout
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 8
 
                         Text {
                             text: "PROVIDER QUOTAS"
@@ -520,23 +670,26 @@ Item {
                                     Layout.preferredWidth: 35
                                     horizontalAlignment: Text.AlignRight
                                 }
-
-                                Text {
-                                    text: modelData.state
-                                    font.pixelSize: 10
-                                    color: "#71717a"
-                                    Layout.preferredWidth: 60
-                                    horizontalAlignment: Text.AlignRight
-                                }
                             }
                         }
                     }
+                }
 
-                    // 2. Connected Accounts & Rate Limits
+                // 2. Connected Accounts & Rate Limits
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: rateLimitsLayout.implicitHeight + 16
+                    visible: (plasmoidItem ? plasmoidItem.usageAccountsModel.length : 0) > 0
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
+
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        visible: (plasmoidItem ? plasmoidItem.usageAccountsModel.length : 0) > 0
+                        id: rateLimitsLayout
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 8
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -546,12 +699,12 @@ Item {
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                                 color: "#a1a1aa"
+                                Layout.fillWidth: true
                             }
-                            Item { Layout.fillWidth: true }
                             Rectangle {
                                 width: 54
                                 height: 20
-                                radius: 3
+                                radius: 4
                                 color: Qt.rgba(255, 255, 255, 0.08)
                                 Text {
                                     anchors.centerIn: parent
@@ -588,7 +741,7 @@ Item {
                                         spacing: 8
 
                                         Rectangle {
-                                            width: 30
+                                            width: 32
                                             height: 16
                                             radius: 3
                                             color: Qt.rgba(255, 255, 255, 0.08)
@@ -611,8 +764,8 @@ Item {
                                                 height: parent.height
                                                 radius: 3
                                                 width: Math.max(0, parent.width * (
-                                                    (plasmoidItem && plasmoidItem.showUsed) ? 
-                                                    (modelData.usedPct / 100) : 
+                                                    (plasmoidItem && plasmoidItem.showUsed) ?
+                                                    (modelData.usedPct / 100) :
                                                     (modelData.remainingPct / 100)
                                                 ))
                                                 color: Utils.statusColor(modelData.remainingPct)
@@ -621,8 +774,8 @@ Item {
 
                                         Text {
                                             text: Math.round(
-                                                (plasmoidItem && plasmoidItem.showUsed) ? 
-                                                modelData.usedPct : 
+                                                (plasmoidItem && plasmoidItem.showUsed) ?
+                                                modelData.usedPct :
                                                 modelData.remainingPct
                                             ) + "%"
                                             font.pixelSize: 11
@@ -632,36 +785,42 @@ Item {
                                             Layout.preferredWidth: 35
                                             horizontalAlignment: Text.AlignRight
                                         }
-
-                                        Text {
-                                            text: modelData.countdown
-                                            font.pixelSize: 10
-                                            color: "#71717a"
-                                            Layout.preferredWidth: 80
-                                            horizontalAlignment: Text.AlignRight
-                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // 3. Cost & Spend
+                // 3. Cost & Spend
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: costLayout.implicitHeight + 16
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
+
                     ColumnLayout {
-                        Layout.fillWidth: true
+                        id: costLayout
+                        anchors.fill: parent
+                        anchors.margins: 8
                         spacing: 6
 
                         RowLayout {
                             Layout.fillWidth: true
+                            spacing: 6
                             Text {
                                 text: "COST & TOKENS"
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                                 color: "#a1a1aa"
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
                             }
-                            Item { Layout.fillWidth: true }
                             Row {
+                                Layout.alignment: Qt.AlignRight
                                 spacing: 3
                                 Repeater {
                                     model: [
@@ -670,8 +829,8 @@ Item {
                                         {lbl: "30D", val: "30d"}
                                     ]
                                     Rectangle {
-                                        width: 30
-                                        height: 20
+                                        width: 28
+                                        height: 18
                                         radius: 3
                                         color: (plasmoidItem && plasmoidItem.costRange === modelData.val) ? "#ff2b4d" : Qt.rgba(255, 255, 255, 0.08)
                                         Text {
@@ -689,8 +848,8 @@ Item {
                                     }
                                 }
                                 Rectangle {
-                                    width: 24
-                                    height: 20
+                                    width: 22
+                                    height: 18
                                     radius: 3
                                     color: Qt.rgba(255, 255, 255, 0.08)
                                     Text {
@@ -710,9 +869,9 @@ Item {
                         }
 
                         Text {
-                            text: Utils.formatCost(plasmoidItem ? plasmoidItem.costTotalUsd : 0) + " · " + 
+                            text: Utils.formatCost(plasmoidItem ? plasmoidItem.costTotalUsd : 0) + " · " +
                                   Utils.formatTokens(plasmoidItem ? plasmoidItem.costTotalTokens : 0)
-                            font.pixelSize: 14
+                            font.pixelSize: 13
                             font.weight: Font.Bold
                             color: "#fafafa"
                         }
@@ -740,26 +899,40 @@ Item {
                             }
                         }
                     }
+                }
 
-                    // 4. Trend sparkline
+                // 4. Trend sparkline
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: trendLayout.implicitHeight + 16
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
+
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
+                        id: trendLayout
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
 
                         RowLayout {
                             Layout.fillWidth: true
+                            spacing: 6
                             Text {
                                 text: "30-DAY USAGE TREND"
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                                 color: "#a1a1aa"
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
                             }
-                            Item { Layout.fillWidth: true }
                             Text {
                                 text: "Today: " + Utils.formatCost(plasmoidItem ? plasmoidItem.todaySpend : 0)
                                 font.pixelSize: 10
                                 color: "#a1a1aa"
+                                Layout.alignment: Qt.AlignRight
                             }
                         }
 
@@ -769,6 +942,7 @@ Item {
                         }
                     }
                 }
+            }
         }
 
         // ====================================================================
@@ -785,197 +959,131 @@ Item {
             QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
 
             contentWidth: availableWidth
-            contentHeight: doctorTab.implicitHeight
+            contentHeight: doctorTab.implicitHeight + 16
 
             ColumnLayout {
                 id: doctorTab
                 width: doctorScrollView.availableWidth
-                spacing: 10
+                spacing: 8
 
-                    Text {
-                        text: "DIAGNOSTICS REPORT"
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.8
-                        color: "#a1a1aa"
-                    }
+                // Diagnostics Card
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: diagLayout.implicitHeight + 16
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
 
-                    Repeater {
-                        model: plasmoidItem ? plasmoidItem.doctorModel : []
-                        delegate: RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            Text {
-                                text: modelData.status === "ok" ? "✓" : (modelData.status === "warn" ? "⚠" : "✗")
-                                font.pixelSize: 12
-                                color: modelData.status === "ok" ? "#22c55e" : (modelData.status === "warn" ? "#f59e0b" : "#ff2b4d")
-                            }
-                            Text {
-                                text: modelData.name + ":"
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                color: "#fafafa"
-                            }
-                            Text {
-                                text: modelData.detail
-                                font.pixelSize: 11
-                                font.family: "monospace"
-                                color: "#a1a1aa"
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-                        }
-                    }
+                    ColumnLayout {
+                        id: diagLayout
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: Qt.rgba(255, 255, 255, 0.08)
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
                         Text {
-                            text: "RECENT SERVER LOGS"
+                            text: "DIAGNOSTICS REPORT"
                             font.pixelSize: 10
                             font.weight: Font.Bold
                             font.letterSpacing: 0.8
                             color: "#a1a1aa"
                         }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: "Open File ↗"
-                            font.pixelSize: 10
-                            color: "#ff2b4d"
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { if (plasmoidItem) plasmoidItem.openLogs(); }
-                            }
-                        }
-                    }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 110
-                        radius: 5
-                        color: Qt.rgba(0, 0, 0, 0.35)
-                        border.color: Qt.rgba(255, 255, 255, 0.08)
-                        border.width: 1
-
-                        ListView {
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            clip: true
-                            model: plasmoidItem ? plasmoidItem.recentLogsModel : []
-                            delegate: Text {
-                                width: parent.width
-                                text: modelData
-                                font.pixelSize: 9
-                                font.family: "monospace"
-                                color: "#9ca3af"
-                                elide: Text.ElideRight
+                        Repeater {
+                            model: plasmoidItem ? plasmoidItem.doctorModel : []
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Text {
+                                    text: modelData.status === "ok" ? "✓" : (modelData.status === "warn" ? "⚠" : "✗")
+                                    font.pixelSize: 12
+                                    color: modelData.status === "ok" ? "#10b981" : (modelData.status === "warn" ? "#f59e0b" : "#ef4444")
+                                }
+                                Text {
+                                    text: modelData.name + ":"
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
+                                    color: "#fafafa"
+                                }
+                                Text {
+                                    text: modelData.detail
+                                    font.pixelSize: 11
+                                    font.family: "monospace"
+                                    color: "#a1a1aa"
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
                             }
                         }
                     }
                 }
-        }
 
-        // ====================================================================
-        // TAB 4: SETTINGS VIEW (BEAUTIFULLY ALIGNED & STRUCTURED IN CARDS)
-        // ====================================================================
-        ColumnLayout {
-            id: settingsTab
-            Layout.fillWidth: true
-            Layout.preferredHeight: cardRoot.activeTabHeight
-            clip: true
-            spacing: 12
-            visible: cardRoot.activeTab === "settings"
-
-            // 1. Section Visibility Card (Matching Server & Monitor card styling)
-            Rectangle {
-                Layout.fillWidth: true
-                height: 180
-                radius: 6
-                color: Qt.rgba(255, 255, 255, 0.05)
-                border.color: Qt.rgba(255, 255, 255, 0.08)
-                border.width: 1
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 6
-
-                    Text {
-                        text: "MONITOR SECTION VISIBILITY"
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.8
-                        color: "#a1a1aa"
-                    }
-
-                    QQC2.CheckBox {
-                        text: "Provider health overview"
-                        checked: plasmoidItem ? plasmoidItem.showHealth : false
-                        onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("health", checked); }
-                    }
-                    QQC2.CheckBox {
-                        text: "Usage & quota bars"
-                        checked: plasmoidItem ? plasmoidItem.showUsage : false
-                        onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("usage", checked); }
-                    }
-                    QQC2.CheckBox {
-                        text: "Cost & token breakdown"
-                        checked: plasmoidItem ? plasmoidItem.showCost : false
-                        onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("cost", checked); }
-                    }
-                    QQC2.CheckBox {
-                        text: "30-Day spend trend chart"
-                        checked: plasmoidItem ? plasmoidItem.showTrend : false
-                        onCheckedChanged: { if (plasmoidItem) plasmoidItem.setSectionVisible("trend", checked); }
-                    }
-                }
-            }
-
-            // 2. Preferences & Daemon Card
-            Rectangle {
-                Layout.fillWidth: true
-                height: 60
-                radius: 6
-                color: Qt.rgba(255, 255, 255, 0.05)
-                border.color: Qt.rgba(255, 255, 255, 0.08)
-                border.width: 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 10
+                // Recent Logs Card
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: logsHeaderLayout.implicitHeight + 120 + 20
+                    radius: 8
+                    color: Qt.rgba(255, 255, 255, 0.04)
+                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
 
                     ColumnLayout {
-                        Text {
-                            text: "Start on Login"
-                            font.pixelSize: 11
-                            font.weight: Font.Bold
-                            color: "#fafafa"
-                        }
-                        Text {
-                            text: "Launch OmniRoute daemon on desktop login"
-                            font.pixelSize: 10
-                            color: "#a1a1aa"
-                        }
-                    }
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
 
-                    Item { Layout.fillWidth: true }
+                        RowLayout {
+                            id: logsHeaderLayout
+                            Layout.fillWidth: true
+                            Text {
+                                text: "RECENT SERVER LOGS"
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                                color: "#a1a1aa"
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: "Open File ↗"
+                                font.pixelSize: 10
+                                color: "#ff2b4d"
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: { if (plasmoidItem) plasmoidItem.openLogs(); }
+                                }
+                            }
+                        }
 
-                    QQC2.CheckBox {
-                        checked: plasmoidItem ? plasmoidItem.autostartEnabled : false
-                        onClicked: { if (plasmoidItem) plasmoidItem.toggleAutostart(); }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 110
+                            radius: 6
+                            color: Qt.rgba(0, 0, 0, 0.40)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            ListView {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                clip: true
+                                model: plasmoidItem ? plasmoidItem.recentLogsModel : []
+                                delegate: Text {
+                                    width: parent.width
+                                    text: modelData
+                                    font.pixelSize: 9
+                                    font.family: "monospace"
+                                    color: "#9ca3af"
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // ====================================================================
+// ====================================================================
         // CARD FOOTER
         // ====================================================================
         Rectangle {
@@ -994,9 +1102,9 @@ Item {
                 id: portRect
                 height: 22
                 width: 115
-                radius: 4
-                color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : Qt.rgba(255, 255, 255, 0.08)
-                border.color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : Qt.rgba(255, 255, 255, 0.12)
+                radius: 5
+                color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : Qt.rgba(255, 255, 255, 0.06)
+                border.color: portMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : Qt.rgba(255, 255, 255, 0.10)
                 border.width: 1
 
                 RowLayout {
@@ -1030,16 +1138,14 @@ Item {
 
             // Reload button (wrapped for hover)
             Rectangle {
-                width: 32
-                height: 32
-                implicitWidth: 32
-                implicitHeight: 32
-                radius: 4
-                color: refreshMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
+                width: 26
+                height: 26
+                radius: 5
+                color: refreshMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : "transparent"
                 Text {
                     anchors.centerIn: parent
                     text: "⟳"
-                    font.pixelSize: 18
+                    font.pixelSize: 16
                     color: "#a1a1aa"
                 }
                 MouseArea {
@@ -1059,16 +1165,14 @@ Item {
 
             // GitHub button (wrapped for hover)
             Rectangle {
-                width: 32
-                height: 32
-                implicitWidth: 32
-                implicitHeight: 32
-                radius: 4
-                color: githubArea.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : "transparent"
+                width: 26
+                height: 26
+                radius: 5
+                color: githubArea.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : "transparent"
                 Image {
                     anchors.centerIn: parent
-                    width: 20
-                    height: 20
+                    width: 16
+                    height: 16
                     source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'><path d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z'/></svg>"
                 }
                 MouseArea {

@@ -17,76 +17,17 @@ Item {
     Layout.preferredWidth: plasmoid.formFactor === PlasmaCore.Types.Vertical ? -1 : height
     Layout.preferredHeight: plasmoid.formFactor === PlasmaCore.Types.Vertical ? width : -1
 
-    Canvas {
-        id: iconCanvas
+    Image {
+        id: iconItem
         anchors.fill: parent
-        anchors.margins: Math.round(Math.min(parent.width, parent.height) * 0.12)
-        renderTarget: Canvas.FramebufferObject
-        antialiasing: true
+        anchors.margins: 1
+        source: compactRoot.isRunning ? 
+            Qt.resolvedUrl('../icons/omniroute-tray-running.svg') : 
+            Qt.resolvedUrl('../icons/omniroute-tray-white.svg')
+        sourceSize.width: width
+        sourceSize.height: height
+        fillMode: Image.PreserveAspectFit
         smooth: true
-
-        onPaint: {
-            var ctx = getContext("2d");
-            ctx.reset();
-            ctx.clearRect(0, 0, width, height);
-
-            var w = width;
-            var h = height;
-            var cx = w / 2;
-            var cy = h / 2;
-            var sz = Math.min(w, h);
-            var spokeRadius = sz * 0.38;
-            var hubRadius = Math.max(2, sz * 0.11);
-            var nodeRadius = Math.max(1.8, sz * 0.08);
-            var lineWidth = Math.max(1.2, sz * 0.05);
-
-            var angles = [0, 60, 120, 180, 240, 300];
-
-            // 1. Draw connecting spokes in crisp white
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = lineWidth;
-            ctx.lineCap = "round";
-
-            for (var i = 0; i < angles.length; i++) {
-                var rad = angles[i] * Math.PI / 180;
-                var nx = cx + spokeRadius * Math.cos(rad);
-                var ny = cy + spokeRadius * Math.sin(rad);
-
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(nx, ny);
-                ctx.stroke();
-            }
-
-            // 2. Draw central hub in crisp white
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(cx, cy, hubRadius, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 3. Draw 6 satellite points:
-            // Crimson red (#ff2b4d) when server is running, white (#ffffff) when stopped
-            var nodeColor = compactRoot.isRunning ? "#ff2b4d" : "#ffffff";
-            ctx.fillStyle = nodeColor;
-
-            for (var j = 0; j < angles.length; j++) {
-                var rad2 = angles[j] * Math.PI / 180;
-                var px = cx + spokeRadius * Math.cos(rad2);
-                var py = cy + spokeRadius * Math.sin(rad2);
-
-                ctx.beginPath();
-                ctx.arc(px, py, nodeRadius, 0, 2 * Math.PI);
-                ctx.fill();
-            }
-        }
-
-        Connections {
-            target: compactRoot
-            function onIsRunningChanged() { iconCanvas.requestPaint(); }
-        }
-
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
     }
 
     MouseArea {
