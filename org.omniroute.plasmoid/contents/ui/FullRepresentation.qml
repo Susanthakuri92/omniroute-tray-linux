@@ -34,7 +34,7 @@ Item {
     Layout.maximumHeight: 780
     height: Layout.preferredHeight
 
-    property string activeTab: "supervisor" // "supervisor", "monitor", "doctor"
+    property string activeTab: "supervisor" // "supervisor", "monitor", "doctor", "updates"
 
     ColumnLayout {
         id: contentCol
@@ -137,7 +137,8 @@ Item {
                 model: [
                     { id: "supervisor", label: "🖥️ Server" },
                     { id: "monitor", label: "📊 Monitor" },
-                    { id: "doctor", label: "🩺 Doctor & Logs" }
+                    { id: "doctor", label: "🩺 Doctor" },
+                    { id: "updates", label: "🔄 Updates" }
                 ]
 
                 Rectangle {
@@ -430,124 +431,6 @@ Item {
                     QQC2.CheckBox {
                         checked: plasmoidItem ? plasmoidItem.autostartEnabled : false
                         onClicked: { if (plasmoidItem) plasmoidItem.toggleAutostart(); }
-                    }
-                }
-            }
-
-            // 4. Updates Card (Server & Tray App)
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 88
-                radius: 8
-                color: Qt.rgba(255, 255, 255, 0.04)
-                border.color: Qt.rgba(255, 255, 255, 0.08)
-                border.width: 1
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
-
-                    // Row 1: OmniRoute Server
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        ColumnLayout {
-                            spacing: 1
-                            Text {
-                                text: "OmniRoute Server"
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                color: "#fafafa"
-                            }
-                            Text {
-                                text: plasmoidItem ? plasmoidItem.updateStatus : "v3.8.50"
-                                font.pixelSize: 10
-                                color: "#71717a"
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Rectangle {
-                            width: 86
-                            height: 24
-                            radius: 5
-                            color: updateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
-                            border.color: updateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Check Server"
-                                font.pixelSize: 10
-                                font.weight: Font.Medium
-                                color: "#fafafa"
-                            }
-
-                            MouseArea {
-                                id: updateBtnArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: Qt.rgba(255, 255, 255, 0.06)
-                    }
-
-                    // Row 2: OmniRoute Tray App
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        ColumnLayout {
-                            spacing: 1
-                            Text {
-                                text: "OmniRoute Tray"
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                color: "#fafafa"
-                            }
-                            Text {
-                                text: plasmoidItem ? plasmoidItem.trayUpdateStatus : "GitHub (main)"
-                                font.pixelSize: 10
-                                color: "#71717a"
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Rectangle {
-                            width: 86
-                            height: 24
-                            radius: 5
-                            color: trayUpdateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
-                            border.color: trayUpdateBtnArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating..." : "Update Tray"
-                                font.pixelSize: 10
-                                font.weight: Font.Medium
-                                color: "#fafafa"
-                            }
-
-                            MouseArea {
-                                id: trayUpdateBtnArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { if (plasmoidItem) plasmoidItem.updateTray(); }
-                            }
-                        }
                     }
                 }
             }
@@ -1083,7 +966,328 @@ Item {
             }
         }
 
-// ====================================================================
+        // ====================================================================
+        // TAB 4: UPDATES VIEW
+        // ====================================================================
+        ColumnLayout {
+            id: updatesTab
+            Layout.fillWidth: true
+            Layout.preferredHeight: cardRoot.activeTabHeight
+            clip: true
+            spacing: 10
+            visible: cardRoot.activeTab === "updates"
+
+            // Header Section
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: "Software & System Updates"
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                    color: "#fafafa"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Rectangle {
+                    height: 18
+                    radius: 9
+                    color: Qt.rgba(255, 255, 255, 0.08)
+                    border.color: Qt.rgba(255, 255, 255, 0.12)
+                    border.width: 1
+                    implicitWidth: channelText.implicitWidth + 12
+
+                    Text {
+                        id: channelText
+                        anchors.centerIn: parent
+                        text: "Release Channel: Stable"
+                        font.pixelSize: 9
+                        color: "#a1a1aa"
+                    }
+                }
+            }
+
+            // Card 1: OmniRoute Server
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 8
+                color: Qt.rgba(255, 255, 255, 0.04)
+                border.color: Qt.rgba(255, 255, 255, 0.08)
+                border.width: 1
+                implicitHeight: serverUpdateCol.implicitHeight + 20
+
+                ColumnLayout {
+                    id: serverUpdateCol
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "⚡"
+                            font.pixelSize: 14
+                        }
+
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: "OmniRoute Server"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                color: "#fafafa"
+                            }
+                            Text {
+                                text: "Core AI gateway daemon & routing engine"
+                                font.pixelSize: 10
+                                color: "#71717a"
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            height: 20
+                            radius: 4
+                            color: Qt.rgba(255, 255, 255, 0.06)
+                            border.color: Qt.rgba(255, 255, 255, 0.10)
+                            border.width: 1
+                            implicitWidth: serverVerText.implicitWidth + 10
+
+                            Text {
+                                id: serverVerText
+                                anchors.centerIn: parent
+                                text: plasmoidItem ? plasmoidItem.serverVersion : "v3.8.50"
+                                font.pixelSize: 10
+                                font.family: "monospace"
+                                color: "#fafafa"
+                            }
+                        }
+                    }
+
+                    // Status pill / text
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Rectangle {
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: {
+                                if (plasmoidItem && plasmoidItem.isCheckingUpdate) return "#f59e0b";
+                                if (plasmoidItem && plasmoidItem.updateStatus.indexOf("Update available") !== -1) return "#38bdf8";
+                                return "#10b981";
+                            }
+                        }
+
+                        Text {
+                            text: plasmoidItem ? plasmoidItem.updateStatus : "Up to date (v3.8.50)"
+                            font.pixelSize: 10
+                            color: "#d4d4d8"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    // Check for Omniroute server updates button
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 6
+                        color: checkServerArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                        border.color: checkServerArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "↻" : "🔍"
+                                font.pixelSize: 11
+                                color: "#fafafa"
+                            }
+
+                            Text {
+                                text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "Checking npm registry…" : "Check for Omniroute server updates"
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: "#fafafa"
+                            }
+                        }
+
+                        MouseArea {
+                            id: checkServerArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
+                        }
+                    }
+                }
+            }
+
+            // Card 2: OmniRoute Tray
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 8
+                color: Qt.rgba(255, 255, 255, 0.04)
+                border.color: Qt.rgba(255, 255, 255, 0.08)
+                border.width: 1
+                implicitHeight: trayUpdateCol.implicitHeight + 20
+
+                ColumnLayout {
+                    id: trayUpdateCol
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "🎛️"
+                            font.pixelSize: 14
+                        }
+
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: "OmniRoute Tray"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                color: "#fafafa"
+                            }
+                            Text {
+                                text: "KDE Plasma plasmoid & system tray integration"
+                                font.pixelSize: 10
+                                color: "#71717a"
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            height: 20
+                            radius: 4
+                            color: Qt.rgba(255, 255, 255, 0.06)
+                            border.color: Qt.rgba(255, 255, 255, 0.10)
+                            border.width: 1
+                            implicitWidth: trayBranchText.implicitWidth + 10
+
+                            Text {
+                                id: trayBranchText
+                                anchors.centerIn: parent
+                                text: "GitHub (main)"
+                                font.pixelSize: 10
+                                font.family: "monospace"
+                                color: "#fafafa"
+                            }
+                        }
+                    }
+
+                    // Status pill / text
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Rectangle {
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: {
+                                if (plasmoidItem && plasmoidItem.isUpdatingTray) return "#f59e0b";
+                                if (plasmoidItem && plasmoidItem.trayUpdateStatus.indexOf("failed") !== -1) return "#ef4444";
+                                return "#10b981";
+                            }
+                        }
+
+                        Text {
+                            text: plasmoidItem ? plasmoidItem.trayUpdateStatus : "Already up to date!"
+                            font.pixelSize: 10
+                            color: "#d4d4d8"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    // Check for omniroute-tray updates button
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 6
+                        color: checkTrayArea.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                        border.color: checkTrayArea.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "↻" : "📥"
+                                font.pixelSize: 11
+                                color: "#fafafa"
+                            }
+
+                            Text {
+                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Pulling latest code…" : "Check for omniroute-tray updates"
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: "#fafafa"
+                            }
+                        }
+
+                        MouseArea {
+                            id: checkTrayArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { if (plasmoidItem) plasmoidItem.updateTray(); }
+                        }
+                    }
+                }
+            }
+
+            // Quick Info Note
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                radius: 6
+                color: Qt.rgba(255, 255, 255, 0.02)
+                border.color: Qt.rgba(255, 255, 255, 0.05)
+                border.width: 1
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    Text {
+                        text: "💡"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
+                        text: "Terminal shortcut: run 'omniroute-tray --update-tray' to update anytime."
+                        font.pixelSize: 9
+                        color: "#71717a"
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+        }
+
+        // ====================================================================
         // CARD FOOTER
         // ====================================================================
         Rectangle {

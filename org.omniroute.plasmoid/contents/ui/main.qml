@@ -93,6 +93,7 @@ PlasmoidItem {
     property string updateStatus: "Up to date (v3.8.50)"
     property string trayUpdateStatus: "GitHub (main)"
     property bool isUpdatingTray: false
+    property bool isCheckingUpdate: false
 
 
     // ========================================================================
@@ -138,9 +139,17 @@ PlasmoidItem {
                 pollTimer.restart();
                 refreshAll();
             } else if (sourceName.indexOf("npm view omniroute") !== -1) {
+                root.isCheckingUpdate = false;
                 var ver = stdout.trim();
-                if (ver && ver.length < 20) {
-                    root.updateStatus = (ver === "3.8.50") ? "Up to date (v3.8.50)" : ("Update available: v" + ver);
+                var curVer = root.serverVersion.replace(/^v/, "");
+                if (ver && ver.length < 25) {
+                    if (ver === curVer || ver === "3.8.50") {
+                        root.updateStatus = "Up to date (v" + curVer + ")";
+                    } else {
+                        root.updateStatus = "Update available: v" + ver;
+                    }
+                } else {
+                    root.updateStatus = "Up to date (v" + curVer + ")";
                 }
             }
         }
@@ -296,6 +305,7 @@ PlasmoidItem {
     }
 
     function checkForUpdates() {
+        root.isCheckingUpdate = true;
         root.updateStatus = "Checking npm registry…";
         runCmd("npm view omniroute version");
     }
