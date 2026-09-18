@@ -3,8 +3,8 @@
     "KPlugin": {
         "Authors": [
             {
-                "Email": "susanthakuri92@gmail.com",
-                "Name": "Susan"
+                "Name": "Susan",
+                "Email": "susanthakuri92@users.noreply.github.com"
             }
         ],
         "Category": "System Information",
@@ -15,7 +15,7 @@
         "License": "MIT",
         "Name": "OmniRoute",
         "Version": "1.0.0",
-        "Website": "https://github.com/diegosouzapw/OmniRoute"
+        "Website": "https://github.com/Susanthakuri92/omniroute-tray-linux"
     },
     "X-Plasma-API-Minimum-Version": "6.0",
     "X-Plasma-MainScript": "ui/main.qml",
