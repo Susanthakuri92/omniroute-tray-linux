@@ -9,9 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Susanthakuri92/omniroute-tray-linux/actions/workflows/ci.yml"><img src="https://github.com/Susanthakuri92/omniroute-tray-linux/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="#features"><img src="https://img.shields.io/badge/Platform-Linux-blue?logo=linux" alt="Linux" /></a>
   <a href="#desktop-environment-support"><img src="https://img.shields.io/badge/Desktop-KDE%20Plasma%20%7C%20GNOME%20%7C%20XFCE%20%7C%20Wayland-brightgreen" alt="Desktops" /></a>
-  <a href="#installation"><img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python" /></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
 </p>
 
@@ -24,6 +25,9 @@ logins, tailing logs, and upgrading by hand. It ships as two interfaces over one
    directly into your panel or system tray. Needs only Python 3 and Git; no PySide6, no Electron.
 2. **Universal Qt tray (PySide6)** — a dark popover for **GNOME**, **XFCE**, **Cinnamon**, **MATE**,
    **LXQt**, and tiling Wayland/X11 compositors (**Hyprland**, **Sway**, **i3**).
+
+Both interfaces read the same telemetry and control the same daemon, so you can switch between them
+without reconfiguring anything.
 
 Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) (macOS).
 
@@ -39,8 +43,8 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 
 ## Features
 
-- **Process supervision & adoption** — start, stop, and restart the OmniRoute daemon. An already-running
-  instance on port `20128` is adopted rather than duplicated.
+- **Process supervision & adoption** — start, stop, and restart the OmniRoute daemon. An
+  already-running instance on port `20128` is adopted rather than duplicated.
 - **Provider health & breakers** — live badge showing active providers and open circuit breakers.
 - **Live quotas** — progress bars for Claude, OpenAI, Gemini, and custom providers, with reset
   countdowns and a `% left` / `% used` toggle.
@@ -48,7 +52,7 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
   token counts, and `% share` toggles.
 - **30-day trend sparkline** — daily spend chart with hover tooltips.
 - **Doctor diagnostics** — one-click checks for the Node.js runtime, the OmniRoute CLI, SQLite
-  database health, and loopback authorization.
+  database health, and loopback authorization. Every check probes live system state.
 - **Live log viewer** — streaming server log with a shortcut to open log files in your editor.
 - **Updates center** — separate cards for the server and the tray, live version badges and commit
   hash, a one-click tray self-update from GitHub, and an update banner with a copyable
@@ -57,6 +61,15 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
   duplicate tray icons.
 - **Desktop autostart** — one-click toggle, implemented via XDG autostart.
 - **Dynamic tray icon** — vector-rendered OmniRoute glyph, white when stopped and red when running.
+
+---
+
+## Requirements
+
+- **Linux** with a system tray (X11 or Wayland).
+- **Python 3.10+** and **Git**.
+- **PySide6** — only for the standalone Qt tray. Not needed for the KDE Plasma widget or the CLI.
+- The `omniroute` CLI must be installed and on your `PATH` (or set `serve_command` in settings).
 
 ---
 
@@ -81,19 +94,57 @@ curl -fsSL https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux
 ```
 
 The installer is safe to re-run; it updates existing files in place without duplicating applets or
-nested folders. It will:
+creating nested folders. It will:
 
 - Clone or update the repository in `~/.local/share/omniroute-tray`
 - Symlink the CLI to `~/.local/bin/omniroute-tray`
 - Register the Plasma 6 Plasmoid to `~/.local/share/plasma/plasmoids/`
 - Create the application menu entry and brand icons, then refresh Plasma Shell if it is running
 
+If `~/.local/bin` is not on your `PATH`, add it so the `omniroute-tray` command resolves.
+
 ### Setup by desktop environment
 
-**KDE Plasma 6** — run the quick install, then right-click your panel → **Add Widgets…**, search for
-**OmniRoute**, and drag it into your panel or System Tray.
+#### KDE Plasma 6
 
-**GNOME, XFCE, Cinnamon, MATE, LXQt, and tiling compositors** — install PySide6:
+Run the quick install, then right-click your panel → **Add Widgets…**, search for **OmniRoute**, and
+drag it into your panel or System Tray.
+
+#### GNOME
+
+Ubuntu includes AppIndicator support; Fedora, Arch, and Debian need the extension:
+
+```bash
+sudo dnf install gnome-shell-extension-appindicator      # Fedora
+sudo pacman -S gnome-shell-extension-appindicator        # Arch / CachyOS / Manjaro
+sudo apt install gnome-shell-extension-appindicator      # Debian
+```
+
+Or enable “AppIndicator and KStatusNotifierItem Support” from the Extension Manager.
+
+#### XFCE, Cinnamon, MATE, LXQt
+
+These desktops provide a system tray out of the box; installing PySide6 is all that is required.
+
+#### Tiling compositors (Hyprland, Sway, i3)
+
+Ensure `"tray"` is in your Waybar modules, for example:
+
+```json
+"modules-right": ["tray", "clock"]
+```
+
+Autostart the tray with your compositor:
+
+```conf
+# Hyprland (~/.config/hypr/hyprland.conf)
+exec-once = ~/.local/bin/omniroute-tray
+
+# Sway / i3
+exec_always --no-startup-id ~/.local/bin/omniroute-tray
+```
+
+#### Installing PySide6
 
 ```bash
 sudo apt install python3-pyside6        # Ubuntu / Debian
@@ -101,12 +152,8 @@ sudo dnf install python3-pyside6        # Fedora
 sudo pacman -S python-pyside6           # Arch / CachyOS / Manjaro
 ```
 
-GNOME also needs AppIndicator support: it is included on Ubuntu, and available elsewhere via the
-`gnome-shell-extension-appindicator` package or the Extensions app. Launch **OmniRoute Tray** from
-your application menu, or run `omniroute-tray &`.
-
-For Waybar, ensure `"tray"` is in your modules list; for Hyprland/Sway/i3, autostart with
-`exec-once = ~/.local/bin/omniroute-tray`.
+The same package is used by the standalone tray on every non-KDE desktop. Launch **OmniRoute Tray**
+from your application menu, or run `omniroute-tray &`.
 
 ### Manual install (from Git)
 
@@ -119,9 +166,13 @@ cd ~/.local/share/omniroute-tray && ./install.sh
 
 ## Updating
 
-Use the **Updates** tab in the tray popover: **Check for Tray Updates** pulls the latest code from
-GitHub, **Check for Updates** queries npm for newer server releases, and **GitHub ↗** opens either
-repository. From a terminal:
+Use the **Updates** tab in the tray popover:
+
+- **Check for Tray Updates** pulls the latest code from GitHub and syncs the widgets.
+- **Check for Updates** queries npm for newer server releases.
+- **GitHub ↗** on either card opens the corresponding repository.
+
+From a terminal:
 
 ```bash
 omniroute-tray --update-tray
@@ -138,13 +189,22 @@ curl -fsSL https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux
 Or, from a local installation, `~/.local/share/omniroute-tray/uninstall.sh` (equivalently,
 `install.sh --uninstall`).
 
-The uninstaller stops running processes and removes the CLI symlink, the Plasma widget, the menu and
-autostart entries, the installed icons, and the cloned repository, then clears the QML cache and
-refreshes the desktop databases. Your configuration and logs are kept unless you pass `--purge`.
+The uninstaller stops running tray and server processes, then removes:
+
+- the CLI symlink at `~/.local/bin/omniroute-tray`
+- the Plasma widget at `~/.local/share/plasma/plasmoids/org.omniroute.plasmoid`
+- the menu entry and the login autostart entry
+- the installed icons under `~/.local/share/icons/hicolor/scalable/apps/`
+- the cloned repository at `~/.local/share/omniroute-tray`
+
+It then clears the QML cache and refreshes the desktop databases. Your configuration and logs are
+preserved unless you pass `--purge`.
 
 ---
 
 ## CLI Reference
+
+`omniroute-tray` doubles as a scripting utility; all commands print JSON or a short status line.
 
 | Command | Action |
 | :--- | :--- |
@@ -157,6 +217,9 @@ refreshes the desktop databases. Your configuration and logs are kept unless you
 | `omniroute-tray --snapshot` | Full telemetry JSON snapshot (health, quotas, rates, cost) |
 | `omniroute-tray --update-tray` | Pull the latest code from GitHub and sync the desktop widgets |
 | `omniroute-tray --toggle-autostart` | Toggle start on desktop login |
+
+Run without arguments to start the GUI tray. If the KDE Plasmoid is active, the standalone tray
+exits to avoid a duplicate icon; `--standalone` (or `--force`) runs it anyway.
 
 ---
 
@@ -211,13 +274,20 @@ kbuildsycoca6 --noincremental
 systemctl --user restart plasma-plasmashell
 ```
 
+If the widget still shows old code, your session may treat that restart as a no-op — use
+`kquitapp6 plasmashell && kstart plasmashell` instead.
+
+**Telemetry is empty.** Confirm the server is reachable at the configured `api_base`
+(`curl -s http://127.0.0.1:20128/api/monitoring/health`) and check
+`~/.local/state/omniroute-tray/omniroute-tray.log`.
+
 ---
 
 ## Contributing
 
-Bug reports, suggestions, and pull requests are welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, or open an issue on
-[GitHub](https://github.com/Susanthakuri92/omniroute-tray-linux).
+Bug reports, suggestions, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for
+the development workflow and the checks CI runs. User-visible changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 ---
 
