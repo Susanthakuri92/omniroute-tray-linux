@@ -85,10 +85,20 @@ is_omniroute_clone() {
 
 # Handle uninstall flag
 if [ "${1:-}" = "--uninstall" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+    if [ -f "${SCRIPT_DIR}/uninstall.sh" ]; then
+        exec bash "${SCRIPT_DIR}/uninstall.sh" "${@:2}"
+    fi
     log_info "Uninstalling OmniRoute Tray..."
+    "${BIN_DIR}/omniroute-tray" --stop 2>/dev/null || true
+    pkill -f "omniroute_tray.py" 2>/dev/null || true
     remove_managed_path "${BIN_DIR}/omniroute-tray"
     remove_managed_path "${PLASMOID_DIR}"
     remove_managed_path "${DESKTOP_DIR}/omniroute-tray.desktop"
+    remove_managed_path "${HOME}/.config/autostart/omniroute-tray.desktop"
+    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray.svg"
+    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-symbolic.svg"
+    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-active-symbolic.svg"
     remove_managed_path "${INSTALL_DIR}"
     remove_managed_path "${HOME}/.cache/plasmashell/qmlcache"
     remove_managed_path "${HOME}/.cache/qmlcache" || true

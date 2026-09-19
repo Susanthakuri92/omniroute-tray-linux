@@ -1175,10 +1175,19 @@ class ServerSupervisor:
 # ============================================================================
 
 def is_kde_plasmoid_active() -> bool:
-    """True if running under KDE Plasma and the native Plasmoid is registered in appletsrc."""
-    is_kde = "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper() or shutil.which("plasmashell") is not None
-    if not is_kde:
-        return False
+    """True if running under an active KDE Plasma session and the native Plasmoid is registered in appletsrc."""
+    current_desktop = (os.environ.get("XDG_CURRENT_DESKTOP", "") + ":" + os.environ.get("XDG_SESSION_DESKTOP", "")).upper()
+    is_kde_session = "KDE" in current_desktop or os.environ.get("KDE_FULL_SESSION") == "true"
+
+    if not is_kde_session:
+        # If the desktop environment is not KDE (e.g. GNOME, XFCE, Sway), check if plasmashell is actually running
+        try:
+            res = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "plasmashell"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if res.returncode != 0:
+                return False
+        except Exception:
+            return False
+
     appletsrc = Path.home() / ".config" / "plasma-org.kde.plasma.desktop-appletsrc"
     if not appletsrc.is_file():
         return False
@@ -2363,6 +2372,10 @@ class TrayApp:
         )
 
         self.tray = QSystemTrayIcon()
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            msg = "Notice: System tray notification area not detected in this desktop session. If running GNOME, please ensure 'gnome-shell-extension-appindicator' is installed and enabled."
+            log_line(msg)
+            print(f"[!] {msg}", file=sys.stderr)
         ensure_tray_icon_installed()
         self.tray.setIcon(get_tray_icon("stopped"))
         self.tray.setToolTip("OmniRoute")
