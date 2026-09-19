@@ -1313,22 +1313,20 @@ class TrayAssetPaths:
 
     @classmethod
     def set_autostart(cls, enabled: bool) -> None:
-        try:
-            log_line(f"set_autostart called with enabled={enabled}")
-            p = cls.autostart_path()
-            if enabled:
-                p.parent.mkdir(parents=True, exist_ok=True)
-                exe = cls.tray_executable()
-                # If running under KDE Plasma with the native widget active, autostart
-                # starts the server daemon rather than spawning a redundant PySide6 tray icon.
-                if is_kde_plasmoid_active():
-                    exec_line = f'"{exe}" --start' if " " in exe else f"{exe} --start"
-                    comment = "OmniRoute AI Router Daemon"
-                else:
-                    exec_line = f'"{exe}"' if " " in exe else exe
-                    comment = "System tray supervisor and monitor for OmniRoute AI router"
+        p = cls.autostart_path()
+        if enabled:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            exe = cls.tray_executable()
+            # If running under KDE Plasma with the native widget active, autostart
+            # starts the server daemon rather than spawning a redundant PySide6 tray icon.
+            if is_kde_plasmoid_active():
+                exec_line = f'"{exe}" --start' if " " in exe else f"{exe} --start"
+                comment = "OmniRoute AI Router Daemon"
+            else:
+                exec_line = f'"{exe}"' if " " in exe else exe
+                comment = "System tray supervisor and monitor for OmniRoute AI router"
 
-                content = f"""[Desktop Entry]
+            content = f"""[Desktop Entry]
 Type=Application
 Name=OmniRoute
 Comment={comment}
@@ -1339,15 +1337,10 @@ Categories=Utility;Development;Network;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
 """
-                p.write_text(content)
-                log_line(f"Autostart file created at: {p}")
-            else:
-                if p.exists():
-                    p.unlink()
-                log_line(f"Autostart file removed: {p}")
-        except Exception as e:
-            log_line(f"ERROR: set_autostart failed: {e}")
-            raise
+            p.write_text(content)
+        else:
+            if p.exists():
+                p.unlink()
 
 
 class TrayIconManager:
