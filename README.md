@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A system tray supervisor, telemetry dashboard, diagnostics tool, and auto-updater for <a href="https://www.npmjs.com/package/omniroute">OmniRoute</a> on Linux.</strong>
+  <strong>A system tray supervisor, telemetry dashboard, diagnostics tool, and auto-updater for <a href="https://github.com/diegosouzapw/OmniRoute">OmniRoute</a> on Linux.</strong>
 </p>
 
 <p align="center">
