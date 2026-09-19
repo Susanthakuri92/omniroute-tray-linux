@@ -83,6 +83,31 @@ is_omniroute_clone() {
     return 1
 }
 
+# Stop the tray by inspecting argv positions, rather than `pkill -f
+# omniroute_tray.py`, which also signals unrelated processes that merely mention
+# the filename (an editor, a pager, a shell running grep). The tray runs either
+# directly (`python3 …/omniroute_tray.py`) or through the installed symlink, whose
+# path the interpreter receives as argv[1] (`python3 ~/.local/bin/omniroute-tray`).
+stop_tray_processes() {
+    local pid_dir pid host
+    local -a argv
+    for pid_dir in /proc/[0-9]*; do
+        [ -r "${pid_dir}/cmdline" ] || continue
+        pid="${pid_dir#/proc/}"
+        [ "${pid}" = "$$" ] && continue
+        mapfile -d '' -t argv < "${pid_dir}/cmdline" 2>/dev/null || continue
+        [ "${#argv[@]}" -ge 2 ] || continue
+        host="${argv[0]##*/}"
+        case "${host}" in
+            python|python3|python3.*) ;;
+            *) continue ;;
+        esac
+        case "${argv[1]##*/}" in
+            omniroute-tray|omniroute_tray.py) kill -TERM "${pid}" 2>/dev/null || true ;;
+        esac
+    done
+}
+
 # Handle uninstall flag
 if [ "${1:-}" = "--uninstall" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
@@ -91,7 +116,7 @@ if [ "${1:-}" = "--uninstall" ]; then
     fi
     log_info "Uninstalling OmniRoute Tray..."
     "${BIN_DIR}/omniroute-tray" --stop 2>/dev/null || true
-    pkill -f "omniroute_tray.py" 2>/dev/null || true
+    stop_tray_processes
     remove_managed_path "${BIN_DIR}/omniroute-tray"
     remove_managed_path "${PLASMOID_DIR}"
     remove_managed_path "${DESKTOP_DIR}/omniroute-tray.desktop"

@@ -37,7 +37,33 @@ if [ -x "${BIN_PATH}" ]; then
     echo -e "${BLUE}==>${RESET} Stopping running OmniRoute processes..."
     "${BIN_PATH}" --stop 2>/dev/null || true
 fi
-pkill -f "omniroute_tray.py" 2>/dev/null || true
+# Stop the tray by inspecting argv positions, rather than `pkill -f
+# omniroute_tray.py`, which also signals unrelated processes that merely mention
+# the filename (an editor, a pager, a shell running grep).
+#
+# The tray is launched either directly (`python3 …/omniroute_tray.py`) or through
+# the installed symlink, whose path is what the interpreter receives as argv[1]
+# (`python3 ~/.local/bin/omniroute-tray`), so both names are accepted.
+stop_tray_processes() {
+    local pid_dir pid host
+    local -a argv
+    for pid_dir in /proc/[0-9]*; do
+        [ -r "${pid_dir}/cmdline" ] || continue
+        pid="${pid_dir#/proc/}"
+        [ "${pid}" = "$$" ] && continue
+        mapfile -d '' -t argv < "${pid_dir}/cmdline" 2>/dev/null || continue
+        [ "${#argv[@]}" -ge 2 ] || continue
+        host="${argv[0]##*/}"
+        case "${host}" in
+            python|python3|python3.*) ;;
+            *) continue ;;
+        esac
+        case "${argv[1]##*/}" in
+            omniroute-tray|omniroute_tray.py) kill -TERM "${pid}" 2>/dev/null || true ;;
+        esac
+    done
+}
+stop_tray_processes
 
 # 2. Remove desktop & autostart entries
 echo -e "${BLUE}==>${RESET} Removing desktop integrations..."

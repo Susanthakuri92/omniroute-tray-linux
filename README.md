@@ -215,7 +215,8 @@ systemctl --user restart plasma-plasmashell
 
 ## Contributing
 
-Issues and pull requests are welcome on
+Bug reports, suggestions, and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, or open an issue on
 [GitHub](https://github.com/Susanthakuri92/omniroute-tray-linux).
 
 ---

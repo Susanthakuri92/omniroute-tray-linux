@@ -84,6 +84,7 @@ APP_STATE_DIR = XDG_STATE_HOME / APP_ID
 
 SETTINGS_FILE = APP_CONFIG_DIR / "settings.json"
 LOG_FILE = APP_STATE_DIR / "omniroute-tray.log"
+LOG_MAX_BYTES = 1024 * 1024  # Rotate the tray log to `<name>.1` past this size.
 SERVER_LOG_FILE = APP_STATE_DIR / "omniroute-serve.log"
 AUTOSTART_FILE = XDG_CONFIG_HOME / "autostart" / "omniroute-tray.desktop"
 
@@ -112,6 +113,13 @@ def log_line(msg: str) -> None:
     """Append a timestamped line to the tray log. Never raises, never blocks."""
     try:
         ensure_dirs()
+        try:
+            # Single-generation rotation: the log is append-only and the tray can
+            # run for months, so cap it rather than growing without bound.
+            if LOG_FILE.exists() and LOG_FILE.stat().st_size >= LOG_MAX_BYTES:
+                LOG_FILE.replace(LOG_FILE.with_name(LOG_FILE.name + ".1"))
+        except OSError:
+            pass
         with open(LOG_FILE, "a") as f:
             f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg.rstrip()}\n")
     except Exception:
@@ -287,6 +295,51 @@ def reap_zombies() -> None:
             break
 
 
+def _read_cmdline(pid: int) -> List[str]:
+    """Return argv for a PID, or an empty list if /proc cannot be read."""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return []
+    return [tok.decode("utf-8", "replace") for tok in raw.split(b"\0") if tok]
+
+
+# argv[0] basenames that legitimately front a CLI script. `omniroute` ships as a
+# Node package, so the daemon usually runs as `node /path/to/omniroute serve`.
+_SCRIPT_HOSTS = {"node", "nodejs", "bun", "deno", "python", "python3", "sh", "bash"}
+
+
+def _is_server_argv(argv: List[str], cli_name: str = "omniroute") -> bool:
+    """True only if `argv` really is the OmniRoute CLI running in `serve` mode.
+
+    This replaces a `pgrep -f "omniroute serve"` scan, which matched any process
+    that merely mentioned those words on its command line — a pager, an editor, a
+    `grep` — and would then have been signalled. Requiring the words to sit in
+    argv positions, with the host being either the CLI itself or a known script
+    interpreter, keeps the match to actual daemons.
+    """
+    if len(argv) < 2 or "serve" not in argv[1:]:
+        return False
+    head = os.path.basename(argv[0])
+    if head == cli_name:
+        return True
+    return head in _SCRIPT_HOSTS and os.path.basename(argv[1]) == cli_name
+
+
+def _omni_serve_pids(cli_name: str = "omniroute") -> set[int]:
+    """PIDs whose command line is the OmniRoute CLI in `serve` mode."""
+    pids: set[int] = set()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == os.getpid():
+            continue
+        if _is_server_argv(_read_cmdline(pid), cli_name):
+            pids.add(pid)
+    return pids
+
+
 def force_kill_all(port: int = DEFAULT_PORT) -> Tuple[bool, str]:
     messages = []
     pids: set[int] = set()
@@ -301,10 +354,7 @@ def force_kill_all(port: int = DEFAULT_PORT) -> Tuple[bool, str]:
             pass
 
     try:
-        res = subprocess.run(["pgrep", "-f", "omniroute serve"], capture_output=True, text=True, timeout=3)
-        for tok in res.stdout.strip().split():
-            if tok.isdigit():
-                pids.add(int(tok))
+        pids |= _omni_serve_pids()
     except Exception:
         pass
 
@@ -354,12 +404,25 @@ def cli_force_stop(settings: Settings, port: int) -> None:
     for cmd in (
         [cli_binary(settings), "stop"],
         ["fuser", "-k", f"{port}/tcp"],
-        ["pkill", "-9", "-f", "omniroute serve"],
     ):
         try:
             subprocess.run(cmd, capture_output=True, timeout=5)
         except Exception:
             pass
+
+    # Exact-argv match only. The previous `pkill -9 -f "omniroute serve"` killed
+    # any process that merely mentioned those words on its command line (an
+    # editor, a pager, a shell running grep), so it is replaced by a scan that
+    # requires the words to be actual argv entries.
+    try:
+        cli_name = os.path.basename(cli_binary(settings)) or "omniroute"
+        for pid in _omni_serve_pids(cli_name):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+    except Exception:
+        pass
 
     try:
         res = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True, timeout=5)
@@ -2420,7 +2483,12 @@ class TrayApp:
         "up to date" (which is what the UI must never show on error).
         """
         try:
-            res = subprocess.run([cli_binary(self.settings), "--version"], capture_output=True, text=True)
+            res = subprocess.run(
+                [cli_binary(self.settings), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             installed = res.stdout.strip().splitlines()[0].strip() if res.stdout.strip() else ""
             if installed.startswith("v"):
                 installed = installed[1:]
