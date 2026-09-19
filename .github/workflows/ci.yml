@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Compile Python sources
+        run: python3 -m py_compile omniroute_tray.py
+
+      - name: Validate plasmoid metadata
+        run: python3 -m json.tool org.omniroute.plasmoid/metadata.json > /dev/null
+
+      - name: Check shell syntax
+        run: bash -n install.sh uninstall.sh
