@@ -140,7 +140,7 @@ mkdir -p "${HOME}/.local/share"
 mkdir -p "${BIN_DIR}"
 mkdir -p "${DESKTOP_DIR}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
 if [ -n "${SCRIPT_DIR}" ] && [ -f "${SCRIPT_DIR}/omniroute_tray.py" ] && [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
     SOURCE_DIR="${SCRIPT_DIR}"
     log_info "Installing from local directory: ${SOURCE_DIR}"
