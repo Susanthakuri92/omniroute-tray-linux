@@ -380,7 +380,7 @@ PlasmoidItem {
     }
 
     function toggleAutostart() {
-        runCmd("omniroute-tray --toggle-autostart");
+        runCmd("~/.local/bin/omniroute-tray --toggle-autostart");
         root.autostartEnabled = !root.autostartEnabled;
     }
 
