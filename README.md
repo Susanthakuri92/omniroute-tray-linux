@@ -35,9 +35,9 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 
 ## Screenshots
 
-| 🖥️ Server Supervisor | 📊 Telemetry & Quotas | 🩺 Diagnostics & Logs |
-| :---: | :---: | :---: |
-| ![Server Tab](screenshot/Screenshot_20260917_160202.png) | ![Monitor Tab](screenshot/Screenshot_20260917_160218.png) | ![Doctor & Logs Tab](screenshot/Screenshot_20260917_160230.png) |
+| 🖥️ Server Supervisor | 📊 Telemetry & Quotas | 🩺 Diagnostics & Logs | 🔄 Updates Center |
+| :---: | :---: | :---: | :---: |
+| ![Server Tab](screenshot/Server.png) | ![Monitor Tab](screenshot/Monitor.png) | ![Doctor & Logs Tab](screenshot/Doctor.png) | ![Updates Tab](screenshot/Updates.png) |
 
 ---
 
