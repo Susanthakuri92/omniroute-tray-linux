@@ -2285,66 +2285,6 @@ class Bridge(QObject):
     update_status = Signal(str, str, bool)
 
 
-
-class TrayIntegrationService:
-    """Decoupled manager for QSystemTrayIcon lifecycle, context menu, and tooltip.
-
-    Keeps system tray registration and context menu logic completely independent
-    from core supervisor and popover implementations.
-    """
-    def __init__(self, callbacks: dict, parent=None):
-        self.callbacks = callbacks
-        self.tray = QSystemTrayIcon(parent)
-        TrayAssetPaths.ensure_assets_installed()
-        self.tray.setIcon(TrayIconManager.get_icon("stopped"))
-        self.tray.setToolTip("OmniRoute")
-        self.menu = QMenu()
-        self._build_context_menu()
-        self.tray.setContextMenu(self.menu)
-        self.tray.activated.connect(self._on_tray_activated)
-
-    def _build_context_menu(self):
-        self.status_action = self.menu.addAction("Status: Stopped")
-        self.status_action.setEnabled(False)
-        self.menu.addSeparator()
-        self.start_action = self.menu.addAction("Start server", self.callbacks.get("start"))
-        self.stop_action = self.menu.addAction("Stop server", self.callbacks.get("stop"))
-        self.menu.addAction("Restart server", self.callbacks.get("restart"))
-        self.menu.addAction("Force-stop all OmniRoute processes…", self.callbacks.get("force_stop"))
-        self.menu.addSeparator()
-        self.menu.addAction("Open Dashboard", self.callbacks.get("open_dashboard"))
-        self.menu.addAction("View server logs", self.callbacks.get("open_logs"))
-        self.menu.addSeparator()
-        self.menu.addAction("Quit", self.callbacks.get("quit"))
-
-    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
-        if reason == QSystemTrayIcon.Trigger:
-            cb = self.callbacks.get("toggle_popover")
-            if cb:
-                cb(self.tray.geometry())
-
-    def update_state(self, state: ServerState):
-        lbl = STATE_LABELS.get(state, str(state))
-        self.status_action.setText(f"Status: {lbl}")
-        if state in (ServerState.RUNNING, ServerState.ADOPTED):
-            state_key = "running"
-        elif state == ServerState.STARTING:
-            state_key = "starting"
-        else:
-            state_key = "stopped"
-        self.tray.setIcon(TrayIconManager.get_icon(state_key))
-        self.tray.setToolTip(f"OmniRoute — {lbl}")
-        running = (state in (ServerState.RUNNING, ServerState.ADOPTED))
-        self.start_action.setEnabled(not running)
-        self.stop_action.setEnabled(running)
-
-    def show(self):
-        self.tray.show()
-
-    def geometry(self):
-        return self.tray.geometry()
-
-
 class TrayApp:
     def __init__(self):
         ensure_dirs()
