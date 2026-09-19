@@ -1808,20 +1808,38 @@ class OmniRoutePopover(QWidget):
         self.lbl_upd_server.setWordWrap(True)
         layout.addWidget(self.lbl_upd_server)
 
+        row_server_btns = QHBoxLayout()
+        row_server_btns.setSpacing(6)
         self.btn_upd_server = QPushButton("Check server updates")
         self.btn_upd_server.setProperty("class", "action-btn")
         self.btn_upd_server.clicked.connect(self._check_server_updates)
-        layout.addWidget(self.btn_upd_server)
+        row_server_btns.addWidget(self.btn_upd_server)
+
+        btn_gh_server = QPushButton("GitHub ↗")
+        btn_gh_server.setProperty("class", "action-btn")
+        btn_gh_server.setToolTip("Open OmniRoute Server on GitHub")
+        btn_gh_server.clicked.connect(lambda: webbrowser.open("https://github.com/diegosouzapw/OmniRoute"))
+        row_server_btns.addWidget(btn_gh_server)
+        layout.addLayout(row_server_btns)
 
         self.lbl_upd_tray = QLabel("Tray: never checked")
         self.lbl_upd_tray.setProperty("class", "upd-status")
         self.lbl_upd_tray.setWordWrap(True)
         layout.addWidget(self.lbl_upd_tray)
 
+        row_tray_btns = QHBoxLayout()
+        row_tray_btns.setSpacing(6)
         self.btn_upd_tray = QPushButton("Update tray app")
         self.btn_upd_tray.setProperty("class", "action-btn")
         self.btn_upd_tray.clicked.connect(self._update_tray_app)
-        layout.addWidget(self.btn_upd_tray)
+        row_tray_btns.addWidget(self.btn_upd_tray)
+
+        btn_gh_tray = QPushButton("GitHub ↗")
+        btn_gh_tray.setProperty("class", "action-btn")
+        btn_gh_tray.setToolTip("Open OmniRoute Tray on GitHub")
+        btn_gh_tray.clicked.connect(lambda: webbrowser.open("https://github.com/Susanthakuri92/omniroute-tray-linux"))
+        row_tray_btns.addWidget(btn_gh_tray)
+        layout.addLayout(row_tray_btns)
 
         self.tray_app.bridge.update_status.connect(self._on_update_status)
 
