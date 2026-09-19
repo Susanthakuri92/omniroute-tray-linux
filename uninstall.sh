@@ -68,9 +68,14 @@ fi
 
 # 6. Remove repository clone
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
-if [ -d "${INSTALL_DIR}" ] && [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
-    echo -e "${BLUE}==>${RESET} Removing application files from ${INSTALL_DIR}..."
-    rm -rf "${INSTALL_DIR}"
+if [ -d "${INSTALL_DIR}" ]; then
+    if [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
+        echo -e "${BLUE}==>${RESET} Removing application files from ${INSTALL_DIR}..."
+        rm -rf "${INSTALL_DIR}"
+    else
+        echo -e "${BLUE}==>${RESET} Scheduling removal of ${INSTALL_DIR} on exit..."
+        trap 'rm -rf "'"${INSTALL_DIR}"'" 2>/dev/null || true' EXIT
+    fi
 fi
 
 # 7. Purge configuration and logs if requested
