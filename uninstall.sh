@@ -113,7 +113,8 @@ if [ "${PURGE}" -eq 1 ]; then
 else
     if [ -d "${CONFIG_DIR}" ] || [ -d "${STATE_DIR}" ]; then
         echo -e "${YELLOW}!${RESET} Configuration preserved in ${CONFIG_DIR}."
-        echo -e "  To also delete configuration and logs, re-run with: ${BOLD}$0 --purge${RESET}"
+        echo -e "  To purge configuration and logs, re-run the uninstaller script with the --purge flag:"
+        echo -e "  ${BOLD}${INSTALL_DIR}/uninstall.sh --purge${RESET}"
     fi
 fi
 
