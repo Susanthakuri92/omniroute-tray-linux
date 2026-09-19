@@ -1070,12 +1070,12 @@ Item {
             }
 
             // ================================================================
-            // Card 1: OmniRoute Server (Core Gateway Daemon)
+            // Card 1: OmniRoute Server
             // ================================================================
             Rectangle {
                 Layout.fillWidth: true
                 radius: 8
-                color: Qt.rgba(255, 255, 255, 0.035)
+                color: Qt.rgba(255, 255, 255, 0.03)
                 border.color: Qt.rgba(255, 255, 255, 0.08)
                 border.width: 1
                 implicitHeight: serverCol.implicitHeight + 20
@@ -1086,49 +1086,60 @@ Item {
                     anchors.margins: 12
                     spacing: 10
 
-                    // Top Bar: Icon + Title + Version Badge
+                    // Title Row: Title + GitHub Icon (side of title with hover effect) + Version Badge
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: 6
 
+                        Text {
+                            text: "OmniRoute Server"
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: "#fafafa"
+                        }
+
+                        // GitHub Link Icon on side of title with hover effect
                         Rectangle {
-                            width: 30
-                            height: 30
-                            radius: 6
-                            color: Qt.rgba(255, 43, 77, 0.14)
-                            border.color: Qt.rgba(255, 43, 77, 0.3)
+                            id: serverGhPill
+                            width: 22
+                            height: 22
+                            radius: 4
+                            color: serverGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
+                            border.color: serverGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : "transparent"
                             border.width: 1
-                            Text {
+
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                            Image {
                                 anchors.centerIn: parent
-                                text: "⚡"
-                                font.pixelSize: 14
+                                width: 13
+                                height: 13
+                                source: Qt.resolvedUrl("../icons/github.svg")
+                                opacity: serverGhMouse.containsMouse ? 1.0 : 0.45
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
                             }
+
+                            MouseArea {
+                                id: serverGhMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://github.com/diegosouzapw/OmniRoute")
+                            }
+
+                            QQC2.ToolTip.visible: serverGhMouse.containsMouse
+                            QQC2.ToolTip.text: "Open diegosouzapw/OmniRoute on GitHub ↗"
                         }
 
-                        ColumnLayout {
-                            spacing: 1
-                            Layout.fillWidth: true
-                            Text {
-                                text: "OmniRoute Server"
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: "#ffffff"
-                            }
-                            Text {
-                                text: "Core AI routing engine & daemon"
-                                font.pixelSize: 10
-                                color: "#71717a"
-                            }
-                        }
+                        Item { Layout.fillWidth: true }
 
                         // Version badge
                         Rectangle {
-                            height: 22
-                            radius: 5
+                            height: 20
+                            radius: 4
                             color: Qt.rgba(255, 255, 255, 0.06)
-                            border.color: Qt.rgba(255, 255, 255, 0.12)
-                            border.width: 1
-                            implicitWidth: serverVerText.implicitWidth + 12
+                            implicitWidth: serverVerText.implicitWidth + 10
 
                             Text {
                                 id: serverVerText
@@ -1138,172 +1149,72 @@ Item {
                                     return v.startsWith("v") ? v : ("v" + v);
                                 }
                                 font.pixelSize: 10
-                                font.weight: Font.DemiBold
                                 font.family: "monospace"
-                                color: "#f4f4f5"
+                                font.weight: Font.Medium
+                                color: "#e4e4e7"
                             }
                         }
                     }
 
-                    // Status line
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Rectangle {
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: {
-                                if (plasmoidItem && plasmoidItem.isCheckingUpdate) return "#f59e0b";
-                                if (plasmoidItem && plasmoidItem.updateError) return "#ef4444";
-                                if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
-                                return "#10b981";
-                            }
-                        }
-
-                        Text {
-                            text: {
-                                if (!plasmoidItem) return "Version check ready";
-                                if (plasmoidItem.isCheckingUpdate) return "Checking npm registry…";
-                                if (plasmoidItem.updateError) return plasmoidItem.updateErrorMsg || "Couldn't reach npm";
-                                if (plasmoidItem.serverUpdateAvailable) return "Update available: v" + plasmoidItem.serverLatestVersion;
-                                if (!plasmoidItem.updateLastChecked) return "Checked: up to date";
-                                return "Up to date with latest release";
-                            }
-                            font.pixelSize: 10
-                            color: {
-                                if (plasmoidItem && plasmoidItem.updateError) return "#f87171";
-                                if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
-                                return "#a1a1aa";
-                            }
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    // Update Available Banner & Copy Box (shows only when an update exists)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        radius: 6
-                        color: Qt.rgba(56, 189, 248, 0.08)
-                        border.color: Qt.rgba(56, 189, 248, 0.25)
-                        border.width: 1
-                        visible: plasmoidItem && plasmoidItem.serverUpdateAvailable
-                        implicitHeight: updateBannerCol.implicitHeight + 16
-
-                        ColumnLayout {
-                            id: updateBannerCol
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 6
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                Text {
-                                    text: "New Release: v" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "")
-                                    font.pixelSize: 10
-                                    font.weight: Font.Bold
-                                    color: "#38bdf8"
-                                    Layout.fillWidth: true
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 28
-                                radius: 4
-                                color: Qt.rgba(0, 0, 0, 0.3)
-                                border.color: Qt.rgba(255, 255, 255, 0.1)
-
-                                TextInput {
-                                    id: serverCmdText
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 8
-                                    anchors.right: serverCopyBtn.left
-                                    anchors.rightMargin: 6
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: "npm i -g omniroute@" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "latest")
-                                    font.family: "monospace"
-                                    font.pixelSize: 10
-                                    color: "#e4e4e7"
-                                    readOnly: true
-                                    selectByMouse: true
-                                }
-
-                                Rectangle {
-                                    id: serverCopyBtn
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 4
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    height: 20
-                                    radius: 3
-                                    property bool copied: false
-                                    color: serverCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.1)
-                                    implicitWidth: serverCopyLabel.implicitWidth + 10
-
-                                    Text {
-                                        id: serverCopyLabel
-                                        anchors.centerIn: parent
-                                        text: serverCopyBtn.copied ? "✓ Copied" : "Copy"
-                                        font.pixelSize: 9
-                                        font.weight: Font.Bold
-                                        color: serverCopyBtn.copied ? "#10b981" : "#ffffff"
-                                    }
-
-                                    MouseArea {
-                                        id: serverCopyMouse
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        hoverEnabled: true
-                                        onClicked: {
-                                            serverCmdText.selectAll();
-                                            serverCmdText.copy();
-                                            serverCopyBtn.copied = true;
-                                            serverCopyTimer.restart();
-                                        }
-                                    }
-
-                                    Timer {
-                                        id: serverCopyTimer
-                                        interval: 1800
-                                        onTriggered: serverCopyBtn.copied = false
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Action Buttons: Check for Updates & GitHub Page
+                    // Status & Action Row
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        // Check Button
-                        Rectangle {
+                        // Status with dot indicator
+                        RowLayout {
                             Layout.fillWidth: true
-                            height: 28
+                            spacing: 6
+
+                            Rectangle {
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: {
+                                    if (plasmoidItem && plasmoidItem.isCheckingUpdate) return "#f59e0b";
+                                    if (plasmoidItem && plasmoidItem.updateError) return "#ef4444";
+                                    if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
+                                    return "#10b981";
+                                }
+                            }
+
+                            Text {
+                                text: {
+                                    if (!plasmoidItem) return "Ready";
+                                    if (plasmoidItem.isCheckingUpdate) return "Checking npm registry…";
+                                    if (plasmoidItem.updateError) return plasmoidItem.updateErrorMsg || "Couldn't reach npm";
+                                    if (plasmoidItem.serverUpdateAvailable) return "Update available: v" + plasmoidItem.serverLatestVersion;
+                                    return "Up to date with latest release";
+                                }
+                                font.pixelSize: 11
+                                color: {
+                                    if (plasmoidItem && plasmoidItem.updateError) return "#f87171";
+                                    if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
+                                    return "#a1a1aa";
+                                }
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // Clean Check Updates button
+                        Rectangle {
+                            height: 26
                             radius: 5
                             color: checkServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
                             border.color: checkServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
                             border.width: 1
+                            implicitWidth: checkServerLabel.implicitWidth + 18
 
-                            RowLayout {
+                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                            Text {
+                                id: checkServerLabel
                                 anchors.centerIn: parent
-                                spacing: 5
-
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "↻" : "🔍"
-                                    font.pixelSize: 10
-                                    color: "#f4f4f5"
-                                }
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "Checking…" : "Check for Updates"
-                                    font.pixelSize: 10
-                                    font.weight: Font.Medium
-                                    color: "#f4f4f5"
-                                }
+                                text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "Checking…" : "Check for Updates"
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                                color: checkServerMouse.containsMouse ? "#ffffff" : "#d4d4d8"
                             }
 
                             MouseArea {
@@ -1314,50 +1225,83 @@ Item {
                                 onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
                             }
                         }
+                    }
 
-                        // GitHub Link Button
-                        Rectangle {
-                            width: 85
-                            height: 28
-                            radius: 5
-                            color: githubServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.04)
-                            border.color: githubServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.25) : Qt.rgba(255, 255, 255, 0.10)
-                            border.width: 1
+                    // Update Available Command Bar (only appears when an update exists)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 5
+                        color: Qt.rgba(56, 189, 248, 0.08)
+                        border.color: Qt.rgba(56, 189, 248, 0.25)
+                        border.width: 1
+                        visible: plasmoidItem && plasmoidItem.serverUpdateAvailable
 
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 4
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 4
+                            spacing: 6
+
+                            TextInput {
+                                id: serverCmdText
+                                Layout.fillWidth: true
+                                text: "npm i -g omniroute@" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "latest")
+                                font.family: "monospace"
+                                font.pixelSize: 10
+                                color: "#e4e4e7"
+                                readOnly: true
+                                selectByMouse: true
+                            }
+
+                            Rectangle {
+                                id: serverCopyBtn
+                                height: 22
+                                radius: 4
+                                property bool copied: false
+                                color: serverCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.18) : Qt.rgba(255, 255, 255, 0.08)
+                                implicitWidth: serverCopyLabel.implicitWidth + 12
 
                                 Text {
-                                    text: "GitHub ↗"
-                                    font.pixelSize: 10
-                                    font.weight: Font.Medium
-                                    color: githubServerMouse.containsMouse ? "#ffffff" : "#a1a1aa"
+                                    id: serverCopyLabel
+                                    anchors.centerIn: parent
+                                    text: serverCopyBtn.copied ? "✓ Copied" : "Copy"
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    color: serverCopyBtn.copied ? "#34d399" : "#ffffff"
+                                }
+
+                                MouseArea {
+                                    id: serverCopyMouse
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        serverCmdText.selectAll();
+                                        serverCmdText.copy();
+                                        serverCopyBtn.copied = true;
+                                        serverCopyTimer.restart();
+                                    }
+                                }
+
+                                Timer {
+                                    id: serverCopyTimer
+                                    interval: 1800
+                                    onTriggered: serverCopyBtn.copied = false
                                 }
                             }
-
-                            MouseArea {
-                                id: githubServerMouse
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-                                onClicked: Qt.openUrlExternally("https://github.com/diegosouzapw/OmniRoute")
-                            }
-
-                            QQC2.ToolTip.visible: githubServerMouse.containsMouse
-                            QQC2.ToolTip.text: "Open diegosouzapw/OmniRoute on GitHub"
                         }
                     }
                 }
             }
 
             // ================================================================
-            // Card 2: OmniRoute Tray (KDE Plasmoid & Desktop Supervisor)
+            // Card 2: OmniRoute Tray
             // ================================================================
             Rectangle {
                 Layout.fillWidth: true
                 radius: 8
-                color: Qt.rgba(255, 255, 255, 0.035)
+                color: Qt.rgba(255, 255, 255, 0.03)
                 border.color: Qt.rgba(255, 255, 255, 0.08)
                 border.width: 1
                 implicitHeight: trayCol.implicitHeight + 20
@@ -1368,49 +1312,60 @@ Item {
                     anchors.margins: 12
                     spacing: 10
 
-                    // Top Bar: Icon + Title + Version / Commit Badge
+                    // Title Row: Title + GitHub Icon (side of title with hover effect) + Version & Commit Badge
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: 6
 
-                        Rectangle {
-                            width: 30
-                            height: 30
-                            radius: 6
-                            color: Qt.rgba(56, 189, 248, 0.14)
-                            border.color: Qt.rgba(56, 189, 248, 0.3)
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "🎛️"
-                                font.pixelSize: 14
-                            }
+                        Text {
+                            text: "OmniRoute Tray"
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: "#fafafa"
                         }
 
-                        ColumnLayout {
-                            spacing: 1
-                            Layout.fillWidth: true
-                            Text {
-                                text: "OmniRoute Tray"
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: "#ffffff"
-                            }
-                            Text {
-                                text: "Desktop tray app & native KDE widget"
-                                font.pixelSize: 10
-                                color: "#71717a"
-                            }
-                        }
-
-                        // Version & Commit Badge
+                        // GitHub Link Icon on side of title with hover effect
                         Rectangle {
+                            id: trayGhPill
+                            width: 22
                             height: 22
-                            radius: 5
-                            color: Qt.rgba(255, 255, 255, 0.06)
-                            border.color: Qt.rgba(255, 255, 255, 0.12)
+                            radius: 4
+                            color: trayGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
+                            border.color: trayGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : "transparent"
                             border.width: 1
-                            implicitWidth: trayVerText.implicitWidth + 12
+
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 13
+                                height: 13
+                                source: Qt.resolvedUrl("../icons/github.svg")
+                                opacity: trayGhMouse.containsMouse ? 1.0 : 0.45
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                            }
+
+                            MouseArea {
+                                id: trayGhMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://github.com/Susanthakuri92/omniroute-tray-linux")
+                            }
+
+                            QQC2.ToolTip.visible: trayGhMouse.containsMouse
+                            QQC2.ToolTip.text: "Open Susanthakuri92/omniroute-tray-linux on GitHub ↗"
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Version & Commit badge
+                        Rectangle {
+                            height: 20
+                            radius: 4
+                            color: Qt.rgba(255, 255, 255, 0.06)
+                            implicitWidth: trayVerText.implicitWidth + 10
 
                             Text {
                                 id: trayVerText
@@ -1421,76 +1376,69 @@ Item {
                                     return c ? (v + " · " + c) : v;
                                 }
                                 font.pixelSize: 10
-                                font.weight: Font.DemiBold
                                 font.family: "monospace"
-                                color: "#f4f4f5"
+                                font.weight: Font.Medium
+                                color: "#e4e4e7"
                             }
                         }
                     }
 
-                    // Status line
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Rectangle {
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: {
-                                if (plasmoidItem && plasmoidItem.isUpdatingTray) return "#f59e0b";
-                                if (plasmoidItem && plasmoidItem.trayUpdateError) return "#ef4444";
-                                return "#10b981";
-                            }
-                        }
-
-                        Text {
-                            text: {
-                                if (!plasmoidItem) return "Repository sync ready";
-                                if (plasmoidItem.isUpdatingTray) return "Pulling latest git changes…";
-                                if (plasmoidItem.trayUpdateError) return plasmoidItem.trayUpdateErrorMsg || "Git pull failed";
-                                if (!plasmoidItem.trayUpdateLastChecked) return "Checked: up to date";
-                                return plasmoidItem.trayUpdateStatus || "Up to date with GitHub main";
-                            }
-                            font.pixelSize: 10
-                            color: {
-                                if (plasmoidItem && plasmoidItem.trayUpdateError) return "#f87171";
-                                return "#a1a1aa";
-                            }
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    // Action Buttons: Update Tray & GitHub Page
+                    // Status & Action Row
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        // Update Tray Button
-                        Rectangle {
+                        // Status with dot indicator
+                        RowLayout {
                             Layout.fillWidth: true
-                            height: 28
+                            spacing: 6
+
+                            Rectangle {
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: {
+                                    if (plasmoidItem && plasmoidItem.isUpdatingTray) return "#f59e0b";
+                                    if (plasmoidItem && plasmoidItem.trayUpdateError) return "#ef4444";
+                                    return "#10b981";
+                                }
+                            }
+
+                            Text {
+                                text: {
+                                    if (!plasmoidItem) return "Ready";
+                                    if (plasmoidItem.isUpdatingTray) return "Pulling latest git changes…";
+                                    if (plasmoidItem.trayUpdateError) return plasmoidItem.trayUpdateErrorMsg || "Git pull failed";
+                                    return plasmoidItem.trayUpdateStatus || "Up to date with GitHub main";
+                                }
+                                font.pixelSize: 11
+                                color: {
+                                    if (plasmoidItem && plasmoidItem.trayUpdateError) return "#f87171";
+                                    return "#a1a1aa";
+                                }
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // Clean Update Tray button
+                        Rectangle {
+                            height: 26
                             radius: 5
                             color: checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
                             border.color: checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
                             border.width: 1
+                            implicitWidth: checkTrayLabel.implicitWidth + 18
 
-                            RowLayout {
+                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                            Text {
+                                id: checkTrayLabel
                                 anchors.centerIn: parent
-                                spacing: 5
-
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "↻" : "📥"
-                                    font.pixelSize: 10
-                                    color: "#f4f4f5"
-                                }
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating…" : "Check for Tray Updates"
-                                    font.pixelSize: 10
-                                    font.weight: Font.Medium
-                                    color: "#f4f4f5"
-                                }
+                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating…" : "Update Tray"
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                                color: checkTrayMouse.containsMouse ? "#ffffff" : "#d4d4d8"
                             }
 
                             MouseArea {
@@ -1501,80 +1449,18 @@ Item {
                                 onClicked: { if (plasmoidItem) plasmoidItem.updateTray(); }
                             }
                         }
-
-                        // GitHub Link Button
-                        Rectangle {
-                            width: 85
-                            height: 28
-                            radius: 5
-                            color: githubTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.04)
-                            border.color: githubTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.25) : Qt.rgba(255, 255, 255, 0.10)
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 4
-
-                                Text {
-                                    text: "GitHub ↗"
-                                    font.pixelSize: 10
-                                    font.weight: Font.Medium
-                                    color: githubTrayMouse.containsMouse ? "#ffffff" : "#a1a1aa"
-                                }
-                            }
-
-                            MouseArea {
-                                id: githubTrayMouse
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-                                onClicked: Qt.openUrlExternally("https://github.com/Susanthakuri92/omniroute-tray-linux")
-                            }
-
-                            QQC2.ToolTip.visible: githubTrayMouse.containsMouse
-                            QQC2.ToolTip.text: "Open Susanthakuri92/omniroute-tray-linux on GitHub"
-                        }
                     }
                 }
             }
 
-            // Clean Terminal Command Hint
-            Rectangle {
+            // Clean CLI Shortcut text
+            Text {
                 Layout.fillWidth: true
-                height: 32
-                radius: 6
-                color: Qt.rgba(255, 255, 255, 0.02)
-                border.color: Qt.rgba(255, 255, 255, 0.06)
-                border.width: 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    spacing: 8
-
-                    Rectangle {
-                        height: 16
-                        radius: 3
-                        color: Qt.rgba(255, 255, 255, 0.08)
-                        implicitWidth: 28
-                        Text {
-                            anchors.centerIn: parent
-                            text: "CLI"
-                            font.pixelSize: 9
-                            font.weight: Font.Bold
-                            color: "#a1a1aa"
-                        }
-                    }
-
-                    Text {
-                        text: "Terminal shortcut: run 'omniroute-tray --update-tray' anytime."
-                        font.pixelSize: 10
-                        color: "#71717a"
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-                }
+                text: "CLI shortcut: omniroute-tray --update-tray"
+                font.pixelSize: 10
+                font.family: "monospace"
+                color: "#52525b"
+                horizontalAlignment: Text.AlignHCenter
             }
 
             Item { Layout.preferredHeight: 4 }
