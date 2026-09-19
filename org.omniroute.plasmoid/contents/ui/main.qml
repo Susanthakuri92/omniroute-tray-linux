@@ -8,7 +8,7 @@ PlasmoidItem {
     id: root
 
     Plasmoid.icon: "omniroute"
-    Plasmoid.status: root.isRunning ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
+    Plasmoid.status: PlasmaCore.Types.ActiveStatus
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground
 
     toolTipMainText: "OmniRoute"
@@ -103,6 +103,7 @@ PlasmoidItem {
     property string trayUpdateLastChecked: ""
     property bool updateError: false
     property string updateErrorMsg: ""
+    property bool isFetchingSnapshot: false
     property bool trayUpdateError: false
     property string trayUpdateErrorMsg: ""
 
@@ -155,6 +156,8 @@ PlasmoidItem {
             } else if (sourceName.indexOf("--cost") !== -1) {
                 applyCost(stdout);
             } else if (sourceName.indexOf("omniroute_snapshot") !== -1 || sourceName.indexOf("--snapshot") !== -1) {
+                root.isFetchingSnapshot = false;
+                snapshotTimeoutTimer.stop();
                 applySnapshot(stdout);
             } else if (sourceName.indexOf("--stop") !== -1) {
                 root.isRunning = false;
@@ -338,9 +341,21 @@ PlasmoidItem {
         runCmd("cat /tmp/omniroute_snapshot.json 2>/dev/null || true");
     }
 
+    Timer {
+        id: snapshotTimeoutTimer
+        interval: 15000
+        repeat: false
+        onTriggered: {
+            root.isFetchingSnapshot = false;
+        }
+    }
+
     function fetchFullSnapshot(period) {
+        if (root.isFetchingSnapshot) return;
+        root.isFetchingSnapshot = true;
+        snapshotTimeoutTimer.restart();
         var p = period || root.costRange || "30d";
-        runCmd("~/.local/bin/omniroute-tray --snapshot --period " + p + " > /tmp/omniroute_snapshot.json.tmp && mv /tmp/omniroute_snapshot.json.tmp /tmp/omniroute_snapshot.json && cat /tmp/omniroute_snapshot.json");
+        runCmd("~/.local/bin/omniroute-tray --snapshot --period " + p + " > /tmp/omniroute_snapshot.json.tmp && mv /tmp/omniroute_snapshot.json.tmp /tmp/omniroute_snapshot.json && cat /tmp/omniroute_snapshot.json # " + Date.now());
     }
 
     function fetchCost(period) {

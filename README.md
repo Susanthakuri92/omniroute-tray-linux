@@ -381,21 +381,28 @@ Omniroute-tray/
 
 ### Duplicate tray icons / widget appears twice
 
-There are exactly two things that cause this, and the installer detects both on every run.
+OmniRoute incorporates multi-layer deduplication to prevent duplicate icons and processes:
 
-**1. The widget is registered twice in Plasma.** This happens when OmniRoute ends up both as a
+**1. The widget is registered twice in Plasma.** This happens if OmniRoute ends up both as a
 standalone panel applet *and* as an entry inside the system tray containment. Plasma stores both
-in `~/.config/plasma-org.kde.plasma.desktop-appletsrc`, and the installer warns when it finds the
-pattern:
+in `~/.config/plasma-org.kde.plasma.desktop-appletsrc`. The installer accurately checks containment
+depth and warns if a duplicate is detected:
 
 ```
 ! OmniRoute appears twice in your panel: once as a standalone widget and once in the system tray.
 ```
 
-**Fix:** right-click the duplicate icon → **Remove from Panel**, or open the system tray
+**Fix:** right-click the redundant icon → **Remove from Panel**, or edit the system tray
 settings and uncheck the entry under *Entries*.
 
-**2. A stale or system-wide install is shadowing the user install.** Two installs of the same
+**2. Standalone tray icon vs. Native Plasmoid on KDE.** On KDE Plasma, the native widget provides
+the complete desktop experience. To prevent duplicate tray icons, launching `omniroute-tray` in GUI
+mode (e.g. from the app menu or autostart) detects the active KDE widget and exits cleanly with `0`
+instead of spawning a redundant PySide6 tray icon. (To force standalone mode on KDE, pass `--standalone`).
+Enabling "Start on login" inside the Plasmoid automatically configures autostart to run `omniroute-tray --start`
+(launching the server daemon only, with zero extra tray icons).
+
+**3. A stale or system-wide install is shadowing the user install.** Two installs of the same
 plasmoid ID (`org.omniroute.plasmoid`) will both load. Check for them:
 
 ```bash
@@ -418,8 +425,7 @@ kquitapp6 plasmashell; sleep 2; plasmashell &
 ```
 
 Also worth checking: a leftover clone at `~/.local/share/omniroute-tray` that you no longer use.
-The installer only deletes it when it can prove it is a clone of this repository, and warns
-instead of guessing otherwise.
+The installer automatically cleans up stale clones of this repository.
 
 ### Two tray icons in GNOME / XFCE / a tiling WM
 

@@ -1174,6 +1174,21 @@ class ServerSupervisor:
 # Decoupled System Tray Architecture (Paths, Icons, Integration)
 # ============================================================================
 
+def is_kde_plasmoid_active() -> bool:
+    """True if running under KDE Plasma and the native Plasmoid is registered in appletsrc."""
+    is_kde = "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper() or shutil.which("plasmashell") is not None
+    if not is_kde:
+        return False
+    appletsrc = Path.home() / ".config" / "plasma-org.kde.plasma.desktop-appletsrc"
+    if not appletsrc.is_file():
+        return False
+    try:
+        content = appletsrc.read_text(errors="ignore")
+        return "plugin=org.omniroute.plasmoid" in content
+    except Exception:
+        return False
+
+
 class TrayAssetPaths:
     """Encapsulates all desktop asset paths, XDG directories, and autostart configuration.
 
@@ -1219,6 +1234,7 @@ class TrayAssetPaths:
         except Exception as e:
             log_line(f"Could not install symbolic tray icons: {e}")
 
+
     @classmethod
     def is_autostart_enabled(cls) -> bool:
         return cls.autostart_path().exists()
@@ -1229,11 +1245,19 @@ class TrayAssetPaths:
         if enabled:
             p.parent.mkdir(parents=True, exist_ok=True)
             exe = cls.tray_executable()
-            exec_line = f'"{exe}"' if " " in exe else exe
+            # If running under KDE Plasma with the native widget active, autostart
+            # starts the server daemon rather than spawning a redundant PySide6 tray icon.
+            if is_kde_plasmoid_active():
+                exec_line = f'"{exe}" --start' if " " in exe else f"{exe} --start"
+                comment = "OmniRoute AI Router Daemon"
+            else:
+                exec_line = f'"{exe}"' if " " in exe else exe
+                comment = "System tray supervisor and monitor for OmniRoute AI router"
+
             content = f"""[Desktop Entry]
 Type=Application
-Name=OmniRoute Tray
-Comment=System tray supervisor and monitor for OmniRoute AI router
+Name=OmniRoute
+Comment={comment}
 Exec={exec_line}
 Icon=omniroute-tray
 Terminal=false
@@ -2598,6 +2622,13 @@ def main():
         print("    • Fedora:                sudo dnf install python3-pyside6", file=sys.stderr)
         print("    • Or via pip:            pip install PySide6\n", file=sys.stderr)
         sys.exit(1)
+
+    # GUI mode only: refuse to become a second tray icon if the native KDE Plasmoid is already active.
+    if is_kde_plasmoid_active() and "--standalone" not in sys.argv and "--force" not in sys.argv:
+        msg = "OmniRoute is already active as a native KDE Plasma widget. Standalone tray icon was skipped to prevent duplicates. (Pass --standalone to run anyway)."
+        log_line(msg)
+        print(msg)
+        sys.exit(0)
 
     # GUI mode only: refuse to become a second tray icon.
     acquired, owner = acquire_single_instance_lock()

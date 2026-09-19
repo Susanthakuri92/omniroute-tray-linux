@@ -236,15 +236,38 @@ fi
 # 9. Warn about duplicate panel registration (widget in both tray and as standalone applet)
 APLETSRC="${HOME}/.config/plasma-org.kde.plasma.desktop-appletsrc"
 if [ -f "$APLETSRC" ]; then
-    # Count standalone applet blocks (lines containing exactly plugin=org.omniroute.plasmoid in an Applet header)
-    # We'll do a simple grep for the pattern that indicates a plugin line.
-    standalone_count=$(grep -c '^\s*plugin=org.omniroute.plasmoid\s*$' "$APLETSRC" || true)
-    # Count occurrences in extraItems/knownItems/shownItems (any line containing the string)
-    tray_count=$(grep -c 'org.omniroute.plasmoid' "$APLETSRC" || true)
-    # If it appears in both contexts (standalone >0 and tray_count > standalone_count because standalone lines also count in grep)
-    if [ "$standalone_count" -gt 0 ] && [ "$tray_count" -gt "$standalone_count" ]; then
+    dup_status=$(python3 -c '
+import sys, re
+try:
+    with open(sys.argv[1], "r", errors="ignore") as f:
+        content = f.read()
+    sections = re.split(r"\n(?=\[)", content)
+    standalone = 0
+    tray = 0
+    for s in sections:
+        lines = s.strip().split("\n")
+        h = lines[0].strip()
+        if any(line.strip() == "plugin=org.omniroute.plasmoid" for line in lines[1:]):
+            if re.match(r"^\[Containments\]\[\d+\]\[Applets\]\[\d+\]$", h):
+                standalone += 1
+            elif re.match(r"^\[Containments\]\[\d+\]\[Applets\]\[\d+\]\[Applets\]\[\d+\]$", h):
+                tray += 1
+    if standalone > 0 and tray > 0:
+        print("PANEL_AND_TRAY")
+    elif standalone > 1 or tray > 1:
+        print("MULTIPLE")
+    else:
+        print("OK")
+except Exception:
+    print("OK")
+' "$APLETSRC" 2>/dev/null || echo "OK")
+
+    if [ "$dup_status" = "PANEL_AND_TRAY" ]; then
         log_warn "OmniRoute appears twice in your panel: once as a standalone widget and once in the system tray."
         echo "  To fix: right-click the duplicate icon → 'Remove from Panel' or edit the system tray settings."
+    elif [ "$dup_status" = "MULTIPLE" ]; then
+        log_warn "OmniRoute appears multiple times in your panel or system tray."
+        echo "  To fix: right-click redundant widget(s) → 'Remove from Panel'."
     fi
 fi
 
@@ -254,7 +277,11 @@ if [ "$SOURCE_DIR" = "$SCRIPT_DIR" ] && [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; the
         log_info "Removing stale clone at $INSTALL_DIR"
         remove_managed_path "$INSTALL_DIR"
     elif [ -d "$INSTALL_DIR" ]; then
-        log_warn "Directory $INSTALL_DIR exists but is not a clone of this repo; leaving it untouched."
+        # Check if directory has non-empty contents other than runtime files
+        non_runtime_files=$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -not -name "tray.lock" -not -name "tray.log" 2>/dev/null | head -n 1)
+        if [ -n "$non_runtime_files" ]; then
+            log_warn "Directory $INSTALL_DIR exists but is not a clone of this repo; leaving it untouched."
+        fi
     fi
 fi
 
