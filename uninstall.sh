@@ -65,21 +65,30 @@ stop_tray_processes() {
 }
 stop_tray_processes
 
-# 2. Remove desktop & autostart entries
+# 2. Purge configuration and logs if requested (done early so configs are removed
+# before we delete the uninstaller script itself)
+if [ "${PURGE}" -eq 1 ]; then
+    echo -e "${BLUE}==>${RESET} Purging configuration and logs (--purge specified)..."
+    rm -rf "${CONFIG_DIR}"
+    rm -rf "${STATE_DIR}"
+    echo -e "${GREEN}✓${RESET} Configuration and logs purged."
+fi
+
+# 3. Remove desktop & autostart entries
 echo -e "${BLUE}==>${RESET} Removing desktop integrations..."
 rm -f "${DESKTOP_ENTRY}"
 rm -f "${AUTOSTART_ENTRY}"
 
-# 3. Remove installed icons
+# 4. Remove installed icons
 rm -f "${ICON_DIR}/omniroute-tray.svg"
 rm -f "${ICON_DIR}/omniroute-tray-symbolic.svg"
 rm -f "${ICON_DIR}/omniroute-tray-active-symbolic.svg"
 
-# 4. Remove CLI executable symlink
+# 5. Remove CLI executable symlink
 echo -e "${BLUE}==>${RESET} Removing executable..."
 rm -f "${BIN_PATH}"
 
-# 5. Remove KDE Plasma widget symlink
+# 6. Remove KDE Plasma widget symlink
 if [ -L "${PLASMOID_DIR}" ] || [ -d "${PLASMOID_DIR}" ]; then
     echo -e "${BLUE}==>${RESET} Removing KDE Plasma widget..."
     rm -rf "${PLASMOID_DIR}"
@@ -92,7 +101,7 @@ if [ -L "${PLASMOID_DIR}" ] || [ -d "${PLASMOID_DIR}" ]; then
     fi
 fi
 
-# 6. Remove repository clone
+# 7. Remove repository clone
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
 if [ -d "${INSTALL_DIR}" ]; then
     if [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
@@ -104,19 +113,14 @@ if [ -d "${INSTALL_DIR}" ]; then
     fi
 fi
 
-# 7. Purge configuration and logs if requested
-if [ "${PURGE}" -eq 1 ]; then
-    echo -e "${BLUE}==>${RESET} Purging configuration and logs (--purge specified)..."
-    rm -rf "${CONFIG_DIR}"
-    rm -rf "${STATE_DIR}"
-    echo -e "${GREEN}✓${RESET} Configuration and logs purged."
-else
+# 8. Notify about preserved config
+if [ "${PURGE}" -eq 0 ]; then
     if [ -d "${CONFIG_DIR}" ] || [ -d "${STATE_DIR}" ]; then
         echo -e "${YELLOW}!${RESET} Configuration preserved in ${CONFIG_DIR}."
-        echo -e "  To purge configuration and logs, re-run the uninstaller script with the --purge flag:"
-        echo -e "  ${BOLD}${INSTALL_DIR}/uninstall.sh --purge${RESET}"
+        echo -e "  To purge it later, run: ${BOLD}rm -rf ${CONFIG_DIR} ${STATE_DIR}${RESET}"
     fi
 fi
+
 
 # 8. Check for system-wide plasmoid
 if [ -e "${SYSTEM_PLASMOID_DIR}" ] || [ -L "${SYSTEM_PLASMOID_DIR}" ]; then
