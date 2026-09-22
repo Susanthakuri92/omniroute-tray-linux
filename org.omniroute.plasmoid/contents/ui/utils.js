@@ -74,3 +74,76 @@ function statusColor(leftPct) {
     if (leftPct > 15) return "#f59e0b"; // amber
     return "#ff2b4d"; // red
 }
+
+function prettifyModel(key) {
+    if (!key) return "";
+    var k = String(key).toLowerCase();
+    
+    // Claude
+    if (k.indexOf("claude") !== -1) {
+        var thinking = (k.indexOf("thinking") !== -1) ? " (Thinking)" : "";
+        var versions = ["4.8", "4-8", "4.7", "4-7", "4.6", "4-6", "4.5", "4-5", "4.1", "4-1", "3.7", "3-7", "3.5", "3-5", "3"];
+        var ver = "";
+        for (var i = 0; i < versions.length; i++) {
+            if (k.indexOf(versions[i]) !== -1) {
+                ver = " " + versions[i].replace("-", ".");
+                break;
+            }
+        }
+        if (k.indexOf("sonnet") !== -1) return "Claude" + ver + " Sonnet" + thinking;
+        if (k.indexOf("haiku") !== -1) return "Claude" + ver + " Haiku" + thinking;
+        if (k.indexOf("opus") !== -1) return "Claude" + ver + " Opus" + thinking;
+        return "Claude" + ver + thinking;
+    }
+    
+    // OpenAI
+    if (k.indexOf("gpt-4o-mini") !== -1) return "GPT-4o mini";
+    if (k.indexOf("gpt-4o") !== -1) return "GPT-4o";
+    if (k.indexOf("o1-mini") !== -1) return "o1-mini";
+    if (k.indexOf("o1-preview") !== -1) return "o1-preview";
+    if (k === "o1" || k.indexOf("o1-") !== -1) return "o1";
+    if (k.indexOf("o3-mini") !== -1) return "o3-mini";
+    if (k === "o3" || k.indexOf("o3-") !== -1) return "o3";
+    if (k.indexOf("120b") !== -1) return "GPT-OSS 120B";
+    if (k.indexOf("4-turbo") !== -1) return "GPT-4 Turbo";
+    
+    // Gemini
+    if (k.indexOf("gemini") !== -1) {
+        if (k.indexOf("pro-agent") !== -1) return "Gemini Pro Agent";
+        if (k.indexOf("3.7-flash") !== -1 || k.indexOf("3-7-flash") !== -1) return "Gemini 3.7 Flash";
+        if (k.indexOf("3.1-flash") !== -1 || k.indexOf("3-1-flash") !== -1) {
+            return (k.indexOf("lite") !== -1) ? "Gemini 3.1 Flash Lite" : "Gemini 3.1 Flash";
+        }
+        if (k.indexOf("3.1-pro") !== -1 || k.indexOf("3-1-pro") !== -1) return "Gemini 3.1 Pro";
+        if (k.indexOf("2.0-flash") !== -1 || k.indexOf("2-0-flash") !== -1) return "Gemini 2.0 Flash";
+        if (k.indexOf("flash-lite") !== -1 || k.indexOf("flash_lite") !== -1) return "Gemini Flash Lite";
+        if (k.indexOf("flash") !== -1) return "Gemini Flash";
+        if (k.indexOf("pro") !== -1) return "Gemini Pro";
+    }
+    
+    // DeepSeek
+    if (k.indexOf("deepseek") !== -1) {
+        if (k.indexOf("r1") !== -1 || k.indexOf("reasoner") !== -1) return "DeepSeek R1";
+        if (k.indexOf("v4") !== -1 || k.indexOf("v-4") !== -1) return (k.indexOf("flash") !== -1) ? "DeepSeek V4 Flash" : "DeepSeek V4";
+        if (k.indexOf("v3") !== -1 || k.indexOf("v-3") !== -1) return "DeepSeek V3";
+        return "DeepSeek";
+    }
+    
+    // GLM
+    if (k.indexOf("glm") !== -1) {
+        if (k.indexOf("5.3") !== -1 || k.indexOf("5-3") !== -1) return "GLM 5.3";
+        if (k.indexOf("5") !== -1) return "GLM 5";
+        return "GLM";
+    }
+    
+    // Kimi
+    if (k.indexOf("kimi") !== -1) {
+        if (k.indexOf("k3") !== -1) return "Kimi K3";
+        if (k.indexOf("k2") !== -1) return "Kimi K2";
+        return "Kimi";
+    }
+
+    if (k.indexOf("credit") !== -1) return "Credits";
+    
+    return key.replace(/[-_]/g, " ").replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+}

@@ -531,112 +531,114 @@ Item {
                 width: monitorScrollView.availableWidth
                 spacing: 8
 
-                // Section: Health Status
+                // 1. Compact System Status Strip
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 62
-                    radius: 8
-                    color: Qt.rgba(255, 255, 255, 0.04)
-                    border.color: Qt.rgba(255, 255, 255, 0.08)
+                    height: 32
+                    radius: 6
+                    color: Qt.rgba(255, 255, 255, 0.03)
+                    border.color: Qt.rgba(255, 255, 255, 0.07)
                     border.width: 1
 
-                    ColumnLayout {
+                    MouseArea {
+                        id: stripMouse
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 3
+                        hoverEnabled: true
+                    }
 
-                        Text {
-                            text: "SYSTEM HEALTH"
-                            font.pixelSize: 10
-                            font.weight: Font.Bold
-                            font.letterSpacing: 0.8
-                            color: "#a1a1aa"
+                    QQC2.ToolTip.visible: stripMouse.containsMouse && !breakerMouse.containsMouse
+                    QQC2.ToolTip.text: {
+                        var a = plasmoidItem ? plasmoidItem.healthActiveProviders : 0;
+                        var c = plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0;
+                        return "Real-time health: " + a + " of " + c + " configured providers responding to health checks";
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 8
+
+                        Rectangle {
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: (plasmoidItem && plasmoidItem.healthActiveProviders > 0) ? "#10b981" : "#ef4444"
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         Text {
                             text: (plasmoidItem ? plasmoidItem.healthActiveProviders : 0) + " of " +
-                                  (plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0) + " providers active · " +
-                                  (plasmoidItem ? plasmoidItem.healthBreakersOpen : 0) + " breakers open"
+                                  (plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0) + " providers active"
                             font.pixelSize: 11
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                             color: "#fafafa"
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                }
-
-                // 1. Provider Quota Bars
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: quotaLayout.implicitHeight + 16
-                    radius: 8
-                    color: Qt.rgba(255, 255, 255, 0.04)
-                    border.color: Qt.rgba(255, 255, 255, 0.08)
-                    border.width: 1
-
-                    ColumnLayout {
-                        id: quotaLayout
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 8
-
-                        Text {
-                            text: "PROVIDER QUOTAS"
-                            font.pixelSize: 10
-                            font.weight: Font.Bold
-                            font.letterSpacing: 0.8
-                            color: "#a1a1aa"
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
-                        Repeater {
-                            model: plasmoidItem ? plasmoidItem.providerQuotasModel : []
-                            delegate: RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
+                        Item { Layout.fillWidth: true }
 
-                                Text {
-                                    text: modelData.provider
-                                    font.pixelSize: 11
-                                    color: "#fafafa"
-                                    Layout.preferredWidth: 80
-                                    elide: Text.ElideRight
-                                }
+                        Rectangle {
+                            id: breakerPill
+                            height: 18
+                            radius: 3
 
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 6
-                                    radius: 3
-                                    color: Qt.rgba(255, 255, 255, 0.10)
-                                    Rectangle {
-                                        height: parent.height
-                                        radius: 3
-                                        width: parent.width * (modelData.remaining / 100)
-                                        color: Utils.statusColor(modelData.remaining)
+                            readonly property int breakers: plasmoidItem ? plasmoidItem.healthBreakersOpen : 0
+                            readonly property int activeCount: plasmoidItem ? plasmoidItem.healthActiveProviders : 0
+                            readonly property int configuredCount: plasmoidItem ? plasmoidItem.healthConfiguredProviders : 0
+                            readonly property int inactiveCount: Math.max(0, configuredCount - activeCount)
+
+                            color: {
+                                if (breakers > 0) return Qt.rgba(239, 68, 68, 0.15);
+                                if (inactiveCount > 0) return Qt.rgba(255, 255, 255, 0.06);
+                                return Qt.rgba(16, 185, 129, 0.12);
+                            }
+                            border.color: {
+                                if (breakers > 0) return Qt.rgba(239, 68, 68, 0.35);
+                                if (inactiveCount > 0) return Qt.rgba(255, 255, 255, 0.10);
+                                return Qt.rgba(16, 185, 129, 0.25);
+                            }
+                            border.width: 1
+                            implicitWidth: breakerTxt.implicitWidth + 12
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Text {
+                                id: breakerTxt
+                                anchors.centerIn: parent
+                                text: {
+                                    if (breakerPill.breakers > 0) {
+                                        return breakerPill.breakers + " tripped";
                                     }
-                                }
-
-                                RowLayout {
-                                    Layout.preferredWidth: 46
-                                    spacing: 2
-                                    Layout.alignment: Qt.AlignRight
-
-                                    Text {
-                                        visible: modelData.remaining < 15
-                                        text: "⚠️"
-                                        font.pixelSize: 9
+                                    if (breakerPill.inactiveCount > 0) {
+                                        return breakerPill.inactiveCount + " inactive";
                                     }
-
-                                    Text {
-                                        text: Math.round(modelData.remaining) + "%"
-                                        font.pixelSize: 11
-                                        font.weight: modelData.remaining < 15 ? Font.Bold : Font.DemiBold
-                                        font.family: "monospace"
-                                        color: Utils.statusColor(modelData.remaining)
-                                        horizontalAlignment: Text.AlignRight
-                                        Layout.fillWidth: true
-                                    }
+                                    return "All active";
                                 }
+                                font.pixelSize: 9
+                                font.weight: Font.DemiBold
+                                color: {
+                                    if (breakerPill.breakers > 0) return "#ef4444";
+                                    if (breakerPill.inactiveCount > 0) return "#a1a1aa";
+                                    return "#34d399";
+                                }
+                            }
+
+                            MouseArea {
+                                id: breakerMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                            }
+
+                            QQC2.ToolTip.visible: breakerMouse.containsMouse
+                            QQC2.ToolTip.text: {
+                                if (breakerPill.breakers > 0) {
+                                    return "Circuit Breakers: " + breakerPill.breakers + " tripped offline due to errors";
+                                }
+                                if (breakerPill.inactiveCount > 0) {
+                                    return breakerPill.activeCount + " active providers · " +
+                                           breakerPill.inactiveCount + " disabled in OmniRoute settings (e.g. kiro) · 0 errors";
+                                }
+                                return "All configured providers are active and responding with 0 errors";
                             }
                         }
                     }
@@ -655,8 +657,8 @@ Item {
                     ColumnLayout {
                         id: rateLimitsLayout
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 8
+                        anchors.margins: 10
+                        spacing: 10
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -692,13 +694,38 @@ Item {
                             model: plasmoidItem ? plasmoidItem.usageAccountsModel : []
                             delegate: ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 4
+                                spacing: 6
 
-                                Text {
-                                    text: modelData.account + " (" + modelData.provider + ")"
-                                    font.pixelSize: 11
-                                    font.weight: Font.Bold
-                                    color: "#fafafa"
+                                // Account Header with subtle provider badge
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Text {
+                                        text: modelData.account
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        color: "#fafafa"
+                                        elide: Text.ElideMiddle
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Rectangle {
+                                        visible: modelData.provider && (modelData.provider.toLowerCase() !== modelData.account.toLowerCase())
+                                        height: 16
+                                        radius: 3
+                                        color: Qt.rgba(255, 255, 255, 0.08)
+                                        implicitWidth: provBadge.implicitWidth + 8
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Text {
+                                            id: provBadge
+                                            anchors.centerIn: parent
+                                            text: modelData.provider
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: "#a1a1aa"
+                                        }
+                                    }
                                 }
 
                                 Repeater {
@@ -708,7 +735,7 @@ Item {
                                         spacing: 8
 
                                         Item {
-                                            Layout.preferredWidth: 125
+                                            Layout.preferredWidth: 140
                                             Layout.alignment: Qt.AlignVCenter
                                             implicitHeight: 18
 
@@ -733,45 +760,56 @@ Item {
                                         }
 
                                         Rectangle {
+                                            id: barTrack
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.alignment: Qt.AlignVCenter
                                             height: 6
                                             radius: 3
                                             color: Qt.rgba(255, 255, 255, 0.10)
+
                                             Rectangle {
+                                                id: barFill
                                                 height: parent.height
                                                 radius: 3
-                                                width: Math.max(0, parent.width * (
+                                                width: Math.max(0, Math.min(parent.width, parent.width * (
                                                     (plasmoidItem && plasmoidItem.showUsed) ?
                                                     (modelData.usedPct / 100) :
                                                     (modelData.remainingPct / 100)
-                                                ))
+                                                )))
                                                 color: Utils.statusColor(modelData.remainingPct)
                                             }
                                         }
 
-                                        RowLayout {
-                                            Layout.preferredWidth: 46
-                                            spacing: 2
-                                            Layout.alignment: Qt.AlignRight
+                                        Item {
+                                            Layout.preferredWidth: 48
+                                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                            implicitHeight: 18
 
-                                            Text {
-                                                visible: modelData.remainingPct < 15
-                                                text: "⚠️"
-                                                font.pixelSize: 9
-                                            }
+                                            Row {
+                                                anchors.right: parent.right
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 3
 
-                                            Text {
-                                                text: Math.round(
-                                                    (plasmoidItem && plasmoidItem.showUsed) ?
-                                                    modelData.usedPct :
-                                                    modelData.remainingPct
-                                                ) + "%"
-                                                font.pixelSize: 11
-                                                font.weight: modelData.remainingPct < 15 ? Font.Bold : Font.DemiBold
-                                                font.family: "monospace"
-                                                color: Utils.statusColor(modelData.remainingPct)
-                                                horizontalAlignment: Text.AlignRight
-                                                Layout.fillWidth: true
+                                                Text {
+                                                    visible: modelData.remainingPct < 15
+                                                    text: "⚠️"
+                                                    font.pixelSize: 9
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                }
+
+                                                Text {
+                                                    text: Math.round(
+                                                        (plasmoidItem && plasmoidItem.showUsed) ?
+                                                        modelData.usedPct :
+                                                        modelData.remainingPct
+                                                    ) + "%"
+                                                    font.pixelSize: 11
+                                                    font.weight: modelData.remainingPct < 15 ? Font.Bold : Font.DemiBold
+                                                    font.family: "monospace"
+                                                    color: Utils.statusColor(modelData.remainingPct)
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                }
                                             }
                                         }
                                     }
@@ -781,7 +819,7 @@ Item {
                     }
                 }
 
-                // 3. Cost & Spend
+                // 3. Cost & Spend Breakdown
                 Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: costLayout.implicitHeight + 16
@@ -793,8 +831,8 @@ Item {
                     ColumnLayout {
                         id: costLayout
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 6
+                        anchors.margins: 10
+                        spacing: 8
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -810,7 +848,7 @@ Item {
                             }
                             Row {
                                 Layout.alignment: Qt.AlignRight
-                                spacing: 3
+                                spacing: 4
                                 Repeater {
                                     model: [
                                         {lbl: "1D", val: "1d"},
@@ -821,13 +859,17 @@ Item {
                                         width: 28
                                         height: 18
                                         radius: 3
-                                        color: (plasmoidItem && plasmoidItem.costRange === modelData.val) ? "#ff2b4d" : Qt.rgba(255, 255, 255, 0.08)
+                                        readonly property bool isSelected: plasmoidItem && plasmoidItem.costRange === modelData.val
+                                        color: isSelected ? Qt.rgba(56, 189, 248, 0.20) : Qt.rgba(255, 255, 255, 0.06)
+                                        border.color: isSelected ? "#38bdf8" : "transparent"
+                                        border.width: 1
+
                                         Text {
                                             anchors.centerIn: parent
                                             text: modelData.lbl
                                             font.pixelSize: 9
                                             font.weight: Font.Bold
-                                            color: "#ffffff"
+                                            color: parent.isSelected ? "#38bdf8" : "#a1a1aa"
                                         }
                                         MouseArea {
                                             anchors.fill: parent
@@ -840,13 +882,17 @@ Item {
                                     width: 22
                                     height: 18
                                     radius: 3
-                                    color: Qt.rgba(255, 255, 255, 0.08)
+                                    readonly property bool isSelected: plasmoidItem && plasmoidItem.showCostPct
+                                    color: isSelected ? Qt.rgba(56, 189, 248, 0.20) : Qt.rgba(255, 255, 255, 0.06)
+                                    border.color: isSelected ? "#38bdf8" : "transparent"
+                                    border.width: 1
+
                                     Text {
                                         anchors.centerIn: parent
                                         text: "%"
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
-                                        color: (plasmoidItem && plasmoidItem.showCostPct) ? "#ff2b4d" : "#a1a1aa"
+                                        color: parent.isSelected ? "#38bdf8" : "#71717a"
                                     }
                                     MouseArea {
                                         anchors.fill: parent
@@ -867,67 +913,46 @@ Item {
 
                         Repeater {
                             model: plasmoidItem ? plasmoidItem.costRowsModel : []
-                            delegate: RowLayout {
+                            delegate: Rectangle {
                                 Layout.fillWidth: true
-                                spacing: 6
-                                Text {
-                                    text: modelData.model
-                                    font.pixelSize: 11
-                                    color: "#d4d4d8"
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
+                                height: 20
+                                radius: 3
+                                color: "transparent"
+
+                                // Subtle proportional spend bar fill
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    radius: 3
+                                    width: Math.max(0, parent.width * (modelData.costPct / 100))
+                                    color: Qt.rgba(56, 189, 248, 0.08)
+                                    visible: modelData.costPct > 0
                                 }
-                                Text {
-                                    text: (plasmoidItem && plasmoidItem.showCostPct) ?
-                                          (Utils.formatCost(modelData.costUsd) + " (" + modelData.costPct.toFixed(1) + "%)") :
-                                          (Utils.formatCost(modelData.costUsd) + " · " + Utils.compactTokens(modelData.tokensIn + modelData.tokensOut))
-                                    font.pixelSize: 11
-                                    font.family: "monospace"
-                                    color: "#fafafa"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 4
+                                    anchors.rightMargin: 4
+
+                                    Text {
+                                        text: modelData.prettyModel || Utils.prettifyModel(modelData.model) || modelData.model
+                                        font.pixelSize: 11
+                                        color: "#e4e4e7"
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        text: (plasmoidItem && plasmoidItem.showCostPct) ?
+                                              (Utils.formatCost(modelData.costUsd) + " (" + modelData.costPct.toFixed(1) + "%)") :
+                                              (Utils.formatCost(modelData.costUsd) + " · " + Utils.compactTokens(modelData.tokensIn + modelData.tokensOut))
+                                        font.pixelSize: 11
+                                        font.family: "monospace"
+                                        color: "#fafafa"
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
-
-                // 4. Trend sparkline
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: trendLayout.implicitHeight + 16
-                    radius: 8
-                    color: Qt.rgba(255, 255, 255, 0.04)
-                    border.color: Qt.rgba(255, 255, 255, 0.08)
-                    border.width: 1
-
-                    ColumnLayout {
-                        id: trendLayout
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 6
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            Text {
-                                text: "30-DAY USAGE TREND"
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                                color: "#a1a1aa"
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                text: "Today: " + Utils.formatCost(plasmoidItem ? plasmoidItem.todaySpend : 0)
-                                font.pixelSize: 10
-                                color: "#a1a1aa"
-                                Layout.alignment: Qt.AlignRight
-                            }
-                        }
-
-                        TrendChart {
-                            Layout.fillWidth: true
-                            points: plasmoidItem ? plasmoidItem.trendPointsModel : []
                         }
                     }
                 }
@@ -1119,25 +1144,15 @@ Item {
         }
 
         // ====================================================================
-        // TAB 4: UPDATES VIEW
+        // TAB 4: UPDATES VIEW (STATIC & NON-SCROLLING)
         // ====================================================================
-        PlasmaComponents.ScrollView {
-            id: updatesScrollView
+        ColumnLayout {
+            id: updatesTab
             Layout.fillWidth: true
-            Layout.fillHeight: true
             Layout.preferredHeight: cardRoot.activeTabHeight
             clip: true
+            spacing: 8
             visible: cardRoot.activeTab === "updates"
-            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
-            QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
-
-            contentWidth: availableWidth
-            contentHeight: updatesTab.implicitHeight + 16
-
-            ColumnLayout {
-                id: updatesTab
-                width: updatesScrollView.availableWidth
-                spacing: 10
 
             // Header Bar
             RowLayout {
@@ -1845,9 +1860,7 @@ Item {
                     }
                 }
             }
-
-            Item { Layout.preferredHeight: 4 }
-            }
+            Item { Layout.fillHeight: true }
         }
 
         // ====================================================================

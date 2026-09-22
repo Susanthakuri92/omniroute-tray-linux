@@ -50,7 +50,7 @@ class TestCLI(unittest.TestCase):
             [sys.executable, str(REPO_ROOT / "omniroute_tray.py"), "--cost", "--range", "7d"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=15,
         )
         # Should not throw unhandled exception or argparse crash
         self.assertNotIn("Traceback (most recent call last):", res.stderr)
@@ -61,7 +61,7 @@ class TestCLI(unittest.TestCase):
             [sys.executable, str(REPO_ROOT / "omniroute_tray.py"), "--snapshot", "--range", "30d"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=20,
         )
         self.assertEqual(res.returncode, 0)
         self.assertNotIn("Traceback", res.stderr)

@@ -89,28 +89,89 @@ Inspired by [zoispag/omniroute-tray](https://github.com/zoispag/omniroute-tray) 
 
 ## Installation
 
-### Quick install
+You can install OmniRoute Tray either using the automated one-liner or manually step-by-step.
+
+### Method 1: Quick Install (One-liner script)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Susanthakuri92/omniroute-tray-linux/main/install.sh | bash
 ```
 
-The installer is safe to re-run; it updates existing files in place without duplicating applets or
-creating nested folders. It will:
-
+The installer is safe to re-run; it updates existing files in place without duplicating applets or creating nested folders. It will:
 - Clone or update the repository in `~/.local/share/omniroute-tray`
 - Symlink the CLI to `~/.local/bin/omniroute-tray`
 - Register the Plasma 6 Plasmoid to `~/.local/share/plasma/plasmoids/`
-- Create the application menu entry and brand icons, then refresh Plasma Shell if it is running
+- Create the application menu entry and brand icons, then refresh Plasma Shell if running
 
-If `~/.local/bin` is not on your `PATH`, add it so the `omniroute-tray` command resolves.
+---
+
+### Method 2: Manual Step-by-Step Installation (By hand)
+
+If you prefer not to pipe remote scripts into `bash`, you can install everything manually in seconds:
+
+#### Step 1: Clone the repository
+
+```bash
+git clone https://github.com/Susanthakuri92/omniroute-tray-linux.git ~/.local/share/omniroute-tray
+cd ~/.local/share/omniroute-tray
+```
+*(If you are already inside the OmniRoute repository, simply `cd contrib/omniroute-tray-linux`.)*
+
+#### Step 2: Install the KDE Plasma 6 Widget (Plasmoid)
+
+KDE Plasma widgets do not require compilation or package managers. Plasma discovers user widgets directly in `~/.local/share/plasma/plasmoids/`. Simply symlink or copy the plasmoid folder:
+
+```bash
+mkdir -p ~/.local/share/plasma/plasmoids
+ln -s "$(pwd)/org.omniroute.plasmoid" ~/.local/share/plasma/plasmoids/org.omniroute.plasmoid
+
+# Refresh Plasma cache and restart plasmashell
+rm -rf ~/.cache/plasmashell/qmlcache ~/.cache/qmlcache 2>/dev/null || true
+systemctl --user restart plasma-plasmashell
+```
+
+Then right-click your panel → **Add Widgets…**, search for **OmniRoute**, and drag it into your panel or System Tray.
+
+#### Step 3: Install the CLI and Standalone Qt Tray (Optional for KDE, required for GNOME/XFCE/etc.)
+
+Symlink the tray script into your user bin directory:
+
+```bash
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/omniroute_tray.py" ~/.local/bin/omniroute-tray
+chmod +x ~/.local/bin/omniroute-tray
+```
+*(Ensure `~/.local/bin` is in your `$PATH`.)*
+
+#### Step 4: Install Desktop Launcher and Application Icon
+
+```bash
+mkdir -p ~/.local/share/applications ~/.local/share/icons/hicolor/scalable/apps
+cp assets/logo.svg ~/.local/share/icons/hicolor/scalable/apps/omniroute.svg
+
+cat > ~/.local/share/applications/omniroute-tray.desktop << EOF
+[Desktop Entry]
+Name=OmniRoute Tray
+GenericName=AI Gateway Tray
+Comment=System Tray Supervisor and Telemetry Monitor for OmniRoute
+Exec=$HOME/.local/bin/omniroute-tray
+Icon=omniroute
+Terminal=false
+Type=Application
+Categories=Utility;Network;Development;
+StartupNotify=false
+EOF
+chmod +x ~/.local/share/applications/omniroute-tray.desktop
+update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+```
+
+---
 
 ### Setup by desktop environment
 
 #### KDE Plasma 6
 
-Run the quick install, then right-click your panel → **Add Widgets…**, search for **OmniRoute**, and
-drag it into your panel or System Tray.
+If you completed Step 2 above (or the quick install), simply right-click your panel → **Add Widgets…**, search for **OmniRoute**, and drag it into your panel or System Tray.
 
 #### GNOME
 
@@ -146,7 +207,7 @@ exec-once = ~/.local/bin/omniroute-tray
 exec_always --no-startup-id ~/.local/bin/omniroute-tray
 ```
 
-#### Installing PySide6
+#### Installing PySide6 (for Non-KDE Desktops)
 
 ```bash
 sudo apt install python3-pyside6        # Ubuntu / Debian
@@ -156,13 +217,6 @@ sudo pacman -S python-pyside6           # Arch / CachyOS / Manjaro
 
 The same package is used by the standalone tray on every non-KDE desktop. Launch **OmniRoute Tray**
 from your application menu, or run `omniroute-tray &`.
-
-### Manual install (from Git)
-
-```bash
-git clone https://github.com/Susanthakuri92/omniroute-tray-linux.git ~/.local/share/omniroute-tray
-cd ~/.local/share/omniroute-tray && ./install.sh
-```
 
 ---
 

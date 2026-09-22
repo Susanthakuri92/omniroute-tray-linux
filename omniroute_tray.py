@@ -753,6 +753,7 @@ class CostRow:
     tokens_in: int
     tokens_out: int
     requests: int
+    pretty_model: str = ""
 
 
 @dataclass
@@ -1028,15 +1029,17 @@ def fetch_cost_data(settings: Settings, range_str: str) -> Optional[CostData]:
             tot_tokens = sum(int(m.get("totalTokens", 0) or 0) for m in bm)
             rows = []
             for m in bm:
+                m_name = m.get("model", "unknown")
                 c = float(m.get("cost", 0) or 0)
                 rows.append(
                     CostRow(
-                        model=m.get("model", "unknown"),
+                        model=m_name,
                         cost_usd=c,
                         cost_pct=(c / tot_cost * 100.0) if tot_cost > 0 else 0.0,
                         tokens_in=int(m.get("promptTokens", 0) or 0),
                         tokens_out=int(m.get("completionTokens", 0) or 0),
                         requests=int(m.get("totalRequests", 0) or 0),
+                        pretty_model=derive_pretty_model_name(m_name),
                     )
                 )
             rows.sort(key=lambda x: x.cost_usd, reverse=True)
@@ -1078,6 +1081,7 @@ def fetch_cost_data(settings: Settings, range_str: str) -> Optional[CostData]:
                         tokens_in=t_in,
                         tokens_out=t_out,
                         requests=reqs,
+                        pretty_model=derive_pretty_model_name(model),
                     )
                 )
             rows.sort(key=lambda x: x.cost_usd, reverse=True)
@@ -1235,28 +1239,8 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
         snap.cost = f_cost.result()
         snap.trend = f_trend.result()
 
-    # 5. Provider Quotas from CLI (consumed only by the plasmoid's snapshot)
-    if plasmoid_extras:
-        try:
-            q_res = subprocess.run(
-                [cli_binary(settings), "usage", "quota", "--output", "json"],
-                capture_output=True, text=True, timeout=5,
-            )
-            cand = extract_json_candidate(q_res.stdout)
-            if cand:
-                q_data = json.loads(cand)
-                for item in q_data:
-                    snap.provider_quotas.append(
-                        ProviderQuota(
-                            provider=item.get("provider", "unknown"),
-                            limit=item.get("limit"),
-                            used=item.get("used"),
-                            remaining=float(item.get("remaining", 100.0) if item.get("remaining") is not None else 100.0),
-                            state=item.get("state", "available"),
-                        )
-                    )
-        except Exception:
-            pass
+    # 5. Provider Quotas (deprecated; omitted to avoid fake 100% data and unnecessary subprocess overhead)
+    # snap.provider_quotas defaults to []
 
     # 6. Doctor Diagnostics
     node_bin = shutil.which("node")

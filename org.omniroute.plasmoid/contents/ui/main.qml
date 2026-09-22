@@ -264,8 +264,11 @@ PlasmoidItem {
             var rawRows = parsed.rows || [];
             var rList = [];
             for (var r = 0; r < rawRows.length; r++) {
+                var mName = rawRows[r].model || "unknown";
+                var pretty = rawRows[r].pretty_model || Utils.prettifyModel(mName) || mName;
                 rList.push({
-                    model: rawRows[r].model,
+                    model: mName,
+                    prettyModel: pretty,
                     costUsd: rawRows[r].cost_usd,
                     costPct: rawRows[r].cost_pct,
                     tokensIn: rawRows[r].tokens_in,
@@ -325,8 +328,11 @@ PlasmoidItem {
                             var rawRows = parsed.cost.rows || [];
                             var rList = [];
                             for (var r = 0; r < rawRows.length; r++) {
+                                var mName = rawRows[r].model || "unknown";
+                                var pretty = rawRows[r].pretty_model || Utils.prettifyModel(mName) || mName;
                                 rList.push({
-                                    model: rawRows[r].model,
+                                    model: mName,
+                                    prettyModel: pretty,
                                     costUsd: rawRows[r].cost_usd,
                                     costPct: rawRows[r].cost_pct,
                                     tokensIn: rawRows[r].tokens_in,
@@ -350,15 +356,34 @@ PlasmoidItem {
                             var wList = [];
                             for (var w = 0; w < (acc.windows || []).length; w++) {
                                 var win = acc.windows[w];
+                                var pLabel = win.pretty_label || Utils.prettifyModel(win.key) || win.key;
                                 wList.push({
                                     key: win.key,
                                     shortTag: win.short_tag,
-                                    prettyLabel: win.pretty_label || win.key,
+                                    prettyLabel: pLabel,
                                     usedPct: win.used_pct,
                                     remainingPct: win.remaining_pct,
                                     countdown: win.reset_countdown
                                 });
                             }
+
+                            // Sort windows logically: Claude -> Gemini -> GPT -> DeepSeek -> others -> Credits
+                            wList.sort(function(x, y) {
+                                function familyOrder(k) {
+                                    var key = (k || "").toLowerCase();
+                                    if (key.indexOf("claude") !== -1) return 1;
+                                    if (key.indexOf("gemini") !== -1) return 2;
+                                    if (key.indexOf("gpt") !== -1 || key.indexOf("o1") !== -1 || key.indexOf("o3") !== -1) return 3;
+                                    if (key.indexOf("deepseek") !== -1) return 4;
+                                    if (key.indexOf("credit") !== -1) return 99;
+                                    return 50;
+                                }
+                                var fx = familyOrder(x.key);
+                                var fy = familyOrder(y.key);
+                                if (fx !== fy) return fx - fy;
+                                return x.prettyLabel.localeCompare(y.prettyLabel);
+                            });
+
                             aList.push({
                                 id: acc.account_name,
                                 account: acc.account_name,
