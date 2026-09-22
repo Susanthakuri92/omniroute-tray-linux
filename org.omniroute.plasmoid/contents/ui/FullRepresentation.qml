@@ -149,12 +149,26 @@ Item {
                     border.color: cardRoot.activeTab === modelData.id ? Qt.rgba(255, 255, 255, 0.18) : "transparent"
                     border.width: 1
 
-                    Text {
+                    RowLayout {
                         anchors.centerIn: parent
-                        text: modelData.label
-                        font.pixelSize: 10
-                        font.weight: cardRoot.activeTab === modelData.id ? Font.Bold : Font.Normal
-                        color: cardRoot.activeTab === modelData.id ? "#fafafa" : "#a1a1aa"
+                        spacing: 4
+
+                        Text {
+                            text: modelData.label
+                            font.pixelSize: 10
+                            font.weight: cardRoot.activeTab === modelData.id ? Font.Bold : Font.Normal
+                            color: cardRoot.activeTab === modelData.id ? "#fafafa" : "#a1a1aa"
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        Rectangle {
+                            visible: modelData.id === "updates" && plasmoidItem && (plasmoidItem.serverUpdateAvailable || plasmoidItem.trayUpdateAvailable)
+                            width: 5
+                            height: 5
+                            radius: 2.5
+                            color: "#38bdf8"
+                            Layout.alignment: Qt.AlignVCenter
+                        }
                     }
 
                     MouseArea {
@@ -247,6 +261,64 @@ Item {
                             text: "Local AI Gateway · Background daemon"
                             font.pixelSize: 11
                             color: "#71717a"
+                        }
+                    }
+                }
+            }
+
+            // Inline Server Action Error Banner
+            Rectangle {
+                Layout.fillWidth: true
+                visible: plasmoidItem ? (plasmoidItem.serverActionError !== "" && !plasmoidItem.isRunning) : false
+                implicitHeight: visible ? (errLayout.implicitHeight + 16) : 0
+                radius: 8
+                color: Qt.rgba(239, 68, 68, 0.15)
+                border.color: Qt.rgba(239, 68, 68, 0.45)
+                border.width: 1
+
+                RowLayout {
+                    id: errLayout
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    Text {
+                        text: "⚠️"
+                        font.pixelSize: 13
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: plasmoidItem ? plasmoidItem.serverActionError : ""
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            color: "#fca5a5"
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                        Text {
+                            text: "Click here to inspect server logs"
+                            font.pixelSize: 10
+                            color: "#93c5fd"
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { if (plasmoidItem) plasmoidItem.openLogs(); }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "✕"
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                        color: "#a1a1aa"
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { if (plasmoidItem) plasmoidItem.serverActionError = ""; }
                         }
                     }
                 }
@@ -544,14 +616,26 @@ Item {
                                     }
                                 }
 
-                                Text {
-                                    text: Math.round(modelData.remaining) + "%"
-                                    font.pixelSize: 11
-                                    font.weight: Font.DemiBold
-                                    font.family: "monospace"
-                                    color: Utils.statusColor(modelData.remaining)
-                                    Layout.preferredWidth: 35
-                                    horizontalAlignment: Text.AlignRight
+                                RowLayout {
+                                    Layout.preferredWidth: 46
+                                    spacing: 2
+                                    Layout.alignment: Qt.AlignRight
+
+                                    Text {
+                                        visible: modelData.remaining < 15
+                                        text: "⚠️"
+                                        font.pixelSize: 9
+                                    }
+
+                                    Text {
+                                        text: Math.round(modelData.remaining) + "%"
+                                        font.pixelSize: 11
+                                        font.weight: modelData.remaining < 15 ? Font.Bold : Font.DemiBold
+                                        font.family: "monospace"
+                                        color: Utils.statusColor(modelData.remaining)
+                                        horizontalAlignment: Text.AlignRight
+                                        Layout.fillWidth: true
+                                    }
                                 }
                             }
                         }
@@ -623,19 +707,29 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 8
 
-                                        Rectangle {
-                                            width: 32
-                                            height: 16
-                                            radius: 3
-                                            color: Qt.rgba(255, 255, 255, 0.08)
+                                        Item {
+                                            Layout.preferredWidth: 125
+                                            Layout.alignment: Qt.AlignVCenter
+                                            implicitHeight: 18
+
                                             Text {
-                                                anchors.centerIn: parent
-                                                text: modelData.shortTag
-                                                font.pixelSize: 9
-                                                font.weight: Font.DemiBold
-                                                font.family: "monospace"
-                                                color: "#a1a1aa"
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: modelData.prettyLabel || modelData.key
+                                                font.pixelSize: 11
+                                                color: "#fafafa"
+                                                elide: Text.ElideRight
                                             }
+
+                                            MouseArea {
+                                                id: winMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                            }
+
+                                            QQC2.ToolTip.visible: winMouse.containsMouse
+                                            QQC2.ToolTip.text: (modelData.prettyLabel || modelData.key) + (modelData.countdown ? ("\n" + modelData.countdown) : "")
                                         }
 
                                         Rectangle {
@@ -655,18 +749,30 @@ Item {
                                             }
                                         }
 
-                                        Text {
-                                            text: Math.round(
-                                                (plasmoidItem && plasmoidItem.showUsed) ?
-                                                modelData.usedPct :
-                                                modelData.remainingPct
-                                            ) + "%"
-                                            font.pixelSize: 11
-                                            font.weight: Font.DemiBold
-                                            font.family: "monospace"
-                                            color: Utils.statusColor(modelData.remainingPct)
-                                            Layout.preferredWidth: 35
-                                            horizontalAlignment: Text.AlignRight
+                                        RowLayout {
+                                            Layout.preferredWidth: 46
+                                            spacing: 2
+                                            Layout.alignment: Qt.AlignRight
+
+                                            Text {
+                                                visible: modelData.remainingPct < 15
+                                                text: "⚠️"
+                                                font.pixelSize: 9
+                                            }
+
+                                            Text {
+                                                text: Math.round(
+                                                    (plasmoidItem && plasmoidItem.showUsed) ?
+                                                    modelData.usedPct :
+                                                    modelData.remainingPct
+                                                ) + "%"
+                                                font.pixelSize: 11
+                                                font.weight: modelData.remainingPct < 15 ? Font.Bold : Font.DemiBold
+                                                font.family: "monospace"
+                                                color: Utils.statusColor(modelData.remainingPct)
+                                                horizontalAlignment: Text.AlignRight
+                                                Layout.fillWidth: true
+                                            }
                                         }
                                     }
                                 }
@@ -864,12 +970,58 @@ Item {
                         anchors.margins: 8
                         spacing: 6
 
-                        Text {
-                            text: "DIAGNOSTICS REPORT"
-                            font.pixelSize: 10
-                            font.weight: Font.Bold
-                            font.letterSpacing: 0.8
-                            color: "#a1a1aa"
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: "DIAGNOSTICS REPORT"
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                                color: "#a1a1aa"
+                                Layout.fillWidth: true
+                            }
+
+                            Rectangle {
+                                width: 56
+                                height: 20
+                                radius: 4
+                                color: copyDiagArea.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : Qt.rgba(255, 255, 255, 0.08)
+
+                                Text {
+                                    id: copyDiagTxt
+                                    anchors.centerIn: parent
+                                    text: "📋 Copy"
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    color: "#fafafa"
+                                }
+
+                                MouseArea {
+                                    id: copyDiagArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (!plasmoidItem || !plasmoidItem.doctorModel) return;
+                                        var report = "=== OmniRoute Diagnostics Report ===\n";
+                                        var m = plasmoidItem.doctorModel;
+                                        for (var i = 0; i < m.length; i++) {
+                                            var item = m[i];
+                                            var icon = item.status === "ok" ? "[OK]  " : (item.status === "warn" ? "[WARN]" : "[FAIL]");
+                                            report += icon + " " + item.name + ": " + item.detail + "\n";
+                                        }
+                                        plasmoidItem.copyToClipboard(report);
+                                        copyDiagTxt.text = "✓ Copied";
+                                        copyDiagTimer.restart();
+                                    }
+                                }
+
+                                Timer {
+                                    id: copyDiagTimer
+                                    interval: 2000
+                                    onTriggered: copyDiagTxt.text = "📋 Copy"
+                                }
+                            }
                         }
 
                         Repeater {
@@ -994,6 +1146,8 @@ Item {
 
                 ColumnLayout {
                     spacing: 2
+                    Layout.alignment: Qt.AlignVCenter
+
                     Text {
                         text: "Software & Updates"
                         font.pixelSize: 13
@@ -1003,9 +1157,10 @@ Item {
                     Text {
                         text: {
                             if (!plasmoidItem) return "Last checked: never";
-                            if (!plasmoidItem.updateLastChecked && !plasmoidItem.trayUpdateLastChecked) return "Last checked: never";
-                            if (plasmoidItem.updateLastChecked) return "Server checked today at " + plasmoidItem.updateLastChecked;
-                            return "Checked at " + plasmoidItem.trayUpdateLastChecked;
+                            var t = plasmoidItem.trayUpdateLastChecked || plasmoidItem.updateLastChecked;
+                            if (!t) return "Last checked: not yet checked";
+                            var clean = t.replace(/\s+[A-Za-z\s]+(?:Time|Standard|Daylight)?$/i, "").trim();
+                            return "Checked at " + clean;
                         }
                         font.pixelSize: 10
                         color: "#71717a"
@@ -1016,52 +1171,63 @@ Item {
 
                 // Status summary badge
                 Rectangle {
+                    id: summaryBadge
                     height: 22
                     radius: 11
+                    Layout.alignment: Qt.AlignVCenter
+
+                    readonly property bool hasUpdate: plasmoidItem && (plasmoidItem.serverUpdateAvailable || plasmoidItem.trayUpdateAvailable)
+                    readonly property bool hasError: plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)
+                    readonly property bool isBusy: plasmoidItem && (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray || plasmoidItem.isCheckingTrayUpdate)
+
                     color: {
-                        if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return Qt.rgba(56, 189, 248, 0.12);
-                        if (plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)) return Qt.rgba(239, 68, 68, 0.12);
-                        if (plasmoidItem && (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray)) return Qt.rgba(245, 158, 11, 0.12);
+                        if (hasUpdate) return Qt.rgba(56, 189, 248, 0.12);
+                        if (hasError) return Qt.rgba(239, 68, 68, 0.12);
+                        if (isBusy) return Qt.rgba(245, 158, 11, 0.12);
                         return Qt.rgba(16, 185, 129, 0.12);
                     }
                     border.color: {
-                        if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return Qt.rgba(56, 189, 248, 0.35);
-                        if (plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)) return Qt.rgba(239, 68, 68, 0.35);
-                        if (plasmoidItem && (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray)) return Qt.rgba(245, 158, 11, 0.35);
+                        if (hasUpdate) return Qt.rgba(56, 189, 248, 0.35);
+                        if (hasError) return Qt.rgba(239, 68, 68, 0.35);
+                        if (isBusy) return Qt.rgba(245, 158, 11, 0.35);
                         return Qt.rgba(16, 185, 129, 0.35);
                     }
                     border.width: 1
-                    implicitWidth: channelText.implicitWidth + 18
+                    implicitWidth: summaryRow.implicitWidth + 18
 
                     RowLayout {
+                        id: summaryRow
                         anchors.centerIn: parent
                         spacing: 5
+
                         Rectangle {
                             width: 6
                             height: 6
                             radius: 3
+                            Layout.alignment: Qt.AlignVCenter
                             color: {
-                                if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
-                                if (plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)) return "#ef4444";
-                                if (plasmoidItem && (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray)) return "#f59e0b";
+                                if (summaryBadge.hasUpdate) return "#38bdf8";
+                                if (summaryBadge.hasError) return "#ef4444";
+                                if (summaryBadge.isBusy) return "#f59e0b";
                                 return "#10b981";
                             }
                         }
                         Text {
                             id: channelText
+                            Layout.alignment: Qt.AlignVCenter
                             text: {
                                 if (!plasmoidItem) return "Stable";
-                                if (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray) return "Checking…";
-                                if (plasmoidItem.serverUpdateAvailable) return "Update Available";
-                                if (plasmoidItem.updateError || plasmoidItem.trayUpdateError) return "Check Failed";
+                                if (summaryBadge.isBusy) return "Checking…";
+                                if (summaryBadge.hasUpdate) return "Update Available";
+                                if (summaryBadge.hasError) return "Check Failed";
                                 return "Up to Date";
                             }
                             font.pixelSize: 10
                             font.weight: Font.Medium
                             color: {
-                                if (plasmoidItem && plasmoidItem.serverUpdateAvailable) return "#38bdf8";
-                                if (plasmoidItem && (plasmoidItem.updateError || plasmoidItem.trayUpdateError)) return "#f87171";
-                                if (plasmoidItem && (plasmoidItem.isCheckingUpdate || plasmoidItem.isUpdatingTray)) return "#fbbf24";
+                                if (summaryBadge.hasUpdate) return "#38bdf8";
+                                if (summaryBadge.hasError) return "#f87171";
+                                if (summaryBadge.isBusy) return "#fbbf24";
                                 return "#34d399";
                             }
                         }
@@ -1086,7 +1252,7 @@ Item {
                     anchors.margins: 12
                     spacing: 10
 
-                    // Title Row: Title + GitHub Icon (side of title with hover effect) + Version Badge
+                    // Title Row: Title + GitHub Icon + Version Badge
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -1096,6 +1262,7 @@ Item {
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
                             color: "#fafafa"
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         // GitHub Link Icon on side of title with hover effect
@@ -1104,6 +1271,7 @@ Item {
                             width: 22
                             height: 22
                             radius: 4
+                            Layout.alignment: Qt.AlignVCenter
                             color: serverGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
                             border.color: serverGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : "transparent"
                             border.width: 1
@@ -1138,7 +1306,10 @@ Item {
                         Rectangle {
                             height: 20
                             radius: 4
+                            Layout.alignment: Qt.AlignVCenter
                             color: Qt.rgba(255, 255, 255, 0.06)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
                             implicitWidth: serverVerText.implicitWidth + 10
 
                             Text {
@@ -1165,11 +1336,13 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
+                            Layout.alignment: Qt.AlignVCenter
 
                             Rectangle {
                                 width: 6
                                 height: 6
                                 radius: 3
+                                Layout.alignment: Qt.AlignVCenter
                                 color: {
                                     if (plasmoidItem && plasmoidItem.isCheckingUpdate) return "#f59e0b";
                                     if (plasmoidItem && plasmoidItem.updateError) return "#ef4444";
@@ -1179,6 +1352,7 @@ Item {
                             }
 
                             Text {
+                                Layout.alignment: Qt.AlignVCenter
                                 text: {
                                     if (!plasmoidItem) return "Ready";
                                     if (plasmoidItem.isCheckingUpdate) return "Checking npm registry…";
@@ -1197,10 +1371,12 @@ Item {
                             }
                         }
 
-                        // Clean Check Updates button
+                        // Check Updates button
                         Rectangle {
                             height: 26
                             radius: 5
+                            Layout.alignment: Qt.AlignVCenter
+                            property bool isBusy: plasmoidItem && plasmoidItem.isCheckingUpdate
                             color: checkServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
                             border.color: checkServerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
                             border.width: 1
@@ -1211,7 +1387,7 @@ Item {
                             Text {
                                 id: checkServerLabel
                                 anchors.centerIn: parent
-                                text: (plasmoidItem && plasmoidItem.isCheckingUpdate) ? "Checking…" : "Check for Updates"
+                                text: parent.isBusy ? "Checking…" : "Check for Updates"
                                 font.pixelSize: 10
                                 font.weight: Font.Medium
                                 color: checkServerMouse.containsMouse ? "#ffffff" : "#d4d4d8"
@@ -1220,7 +1396,8 @@ Item {
                             MouseArea {
                                 id: checkServerMouse
                                 anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
+                                enabled: !parent.isBusy
+                                cursorShape: parent.isBusy ? Qt.ArrowCursor : Qt.PointingHandCursor
                                 hoverEnabled: true
                                 onClicked: { if (plasmoidItem) plasmoidItem.checkForUpdates(); }
                             }
@@ -1246,6 +1423,7 @@ Item {
                             TextInput {
                                 id: serverCmdText
                                 Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
                                 text: "npm i -g omniroute@" + (plasmoidItem ? plasmoidItem.serverLatestVersion : "latest")
                                 font.family: "monospace"
                                 font.pixelSize: 10
@@ -1258,6 +1436,7 @@ Item {
                                 id: serverCopyBtn
                                 height: 22
                                 radius: 4
+                                Layout.alignment: Qt.AlignVCenter
                                 property bool copied: false
                                 color: serverCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.18) : Qt.rgba(255, 255, 255, 0.08)
                                 implicitWidth: serverCopyLabel.implicitWidth + 12
@@ -1312,7 +1491,7 @@ Item {
                     anchors.margins: 12
                     spacing: 10
 
-                    // Title Row: Title + GitHub Icon (side of title with hover effect) + Version & Commit Badge
+                    // Title Row: Title + GitHub Icon + Version & Commit Badge
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -1322,6 +1501,7 @@ Item {
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
                             color: "#fafafa"
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         // GitHub Link Icon on side of title with hover effect
@@ -1330,6 +1510,7 @@ Item {
                             width: 22
                             height: 22
                             radius: 4
+                            Layout.alignment: Qt.AlignVCenter
                             color: trayGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
                             border.color: trayGhMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.20) : "transparent"
                             border.width: 1
@@ -1364,22 +1545,30 @@ Item {
                         Rectangle {
                             height: 20
                             radius: 4
+                            Layout.alignment: Qt.AlignVCenter
                             color: Qt.rgba(255, 255, 255, 0.06)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
                             implicitWidth: trayVerText.implicitWidth + 10
 
                             Text {
                                 id: trayVerText
                                 anchors.centerIn: parent
-                                text: {
-                                    var v = (plasmoidItem && plasmoidItem.trayVersion) ? ("v" + plasmoidItem.trayVersion) : "v1.1.0";
-                                    var c = (plasmoidItem && plasmoidItem.trayCommit && plasmoidItem.trayCommit !== "unknown") ? ("#" + plasmoidItem.trayCommit) : "";
-                                    return c ? (v + " · " + c) : v;
-                                }
+                                text: (plasmoidItem && plasmoidItem.trayVersion) ? ("v" + plasmoidItem.trayVersion) : "v1.1.0"
                                 font.pixelSize: 10
                                 font.family: "monospace"
                                 font.weight: Font.Medium
                                 color: "#e4e4e7"
                             }
+
+                            MouseArea {
+                                id: trayVerMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                            }
+
+                            QQC2.ToolTip.visible: trayVerMouse.containsMouse && plasmoidItem && plasmoidItem.trayCommit && plasmoidItem.trayCommit !== "unknown"
+                            QQC2.ToolTip.text: "Commit #" + (plasmoidItem ? plasmoidItem.trayCommit : "")
                         }
                     }
 
@@ -1392,28 +1581,38 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
+                            Layout.alignment: Qt.AlignVCenter
 
                             Rectangle {
                                 width: 6
                                 height: 6
                                 radius: 3
+                                Layout.alignment: Qt.AlignVCenter
                                 color: {
-                                    if (plasmoidItem && plasmoidItem.isUpdatingTray) return "#f59e0b";
+                                    if (plasmoidItem && (plasmoidItem.isUpdatingTray || plasmoidItem.isCheckingTrayUpdate)) return "#f59e0b";
                                     if (plasmoidItem && plasmoidItem.trayUpdateError) return "#ef4444";
+                                    if (plasmoidItem && plasmoidItem.trayUpdateAvailable) return "#38bdf8";
                                     return "#10b981";
                                 }
                             }
 
                             Text {
+                                Layout.alignment: Qt.AlignVCenter
                                 text: {
                                     if (!plasmoidItem) return "Ready";
                                     if (plasmoidItem.isUpdatingTray) return "Pulling latest git changes…";
-                                    if (plasmoidItem.trayUpdateError) return plasmoidItem.trayUpdateErrorMsg || "Git pull failed";
-                                    return plasmoidItem.trayUpdateStatus || "Up to date with GitHub main";
+                                    if (plasmoidItem.isCheckingTrayUpdate) return "Checking GitHub repository…";
+                                    if (plasmoidItem.trayUpdateError) return plasmoidItem.trayUpdateErrorMsg || "Git check failed";
+                                    if (plasmoidItem.trayUpdateAvailable) {
+                                        var c = plasmoidItem.trayRemoteCommit;
+                                        return c ? ("Update available: commit #" + c) : "Update available on GitHub";
+                                    }
+                                    return plasmoidItem.trayUpdateStatus || "Up to date with latest release";
                                 }
                                 font.pixelSize: 11
                                 color: {
                                     if (plasmoidItem && plasmoidItem.trayUpdateError) return "#f87171";
+                                    if (plasmoidItem && plasmoidItem.trayUpdateAvailable) return "#38bdf8";
                                     return "#a1a1aa";
                                 }
                                 Layout.fillWidth: true
@@ -1421,46 +1620,230 @@ Item {
                             }
                         }
 
-                        // Clean Update Tray button
+                        // Dynamic Action button: "Check for Updates" when up to date, "Update Tray" when update available
                         Rectangle {
+                            id: trayActionBtn
                             height: 26
                             radius: 5
-                            color: checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
-                            border.color: checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            readonly property bool hasUpdate: plasmoidItem && plasmoidItem.trayUpdateAvailable
+                            readonly property bool isBusy: plasmoidItem && (plasmoidItem.isUpdatingTray || plasmoidItem.isCheckingTrayUpdate)
+
+                            color: {
+                                if (hasUpdate) {
+                                    return checkTrayMouse.containsMouse ? Qt.rgba(56, 189, 248, 0.25) : Qt.rgba(56, 189, 248, 0.14);
+                                }
+                                return checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06);
+                            }
+                            border.color: {
+                                if (hasUpdate) {
+                                    return checkTrayMouse.containsMouse ? Qt.rgba(56, 189, 248, 0.55) : Qt.rgba(56, 189, 248, 0.35);
+                                }
+                                return checkTrayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10);
+                            }
                             border.width: 1
                             implicitWidth: checkTrayLabel.implicitWidth + 18
 
                             Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on border.color { ColorAnimation { duration: 120 } }
 
                             Text {
                                 id: checkTrayLabel
                                 anchors.centerIn: parent
-                                text: (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating…" : "Update Tray"
+                                text: {
+                                    if (trayActionBtn.isBusy) {
+                                        return (plasmoidItem && plasmoidItem.isUpdatingTray) ? "Updating…" : "Checking…";
+                                    }
+                                    return trayActionBtn.hasUpdate ? "Update Tray" : "Check for Updates";
+                                }
                                 font.pixelSize: 10
-                                font.weight: Font.Medium
-                                color: checkTrayMouse.containsMouse ? "#ffffff" : "#d4d4d8"
+                                font.weight: trayActionBtn.hasUpdate ? Font.DemiBold : Font.Medium
+                                color: {
+                                    if (trayActionBtn.hasUpdate) {
+                                        return checkTrayMouse.containsMouse ? "#ffffff" : "#38bdf8";
+                                    }
+                                    return checkTrayMouse.containsMouse ? "#ffffff" : "#d4d4d8";
+                                }
                             }
 
                             MouseArea {
                                 id: checkTrayMouse
                                 anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
+                                enabled: !trayActionBtn.isBusy
+                                cursorShape: trayActionBtn.isBusy ? Qt.ArrowCursor : Qt.PointingHandCursor
                                 hoverEnabled: true
-                                onClicked: { if (plasmoidItem) plasmoidItem.updateTray(); }
+                                onClicked: {
+                                    if (!plasmoidItem) return;
+                                    if (trayActionBtn.hasUpdate) {
+                                        plasmoidItem.updateTray();
+                                    } else {
+                                        plasmoidItem.checkTrayUpdates();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Update Available Command Bar for Tray (only appears when trayUpdateAvailable)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 5
+                        color: Qt.rgba(56, 189, 248, 0.08)
+                        border.color: Qt.rgba(56, 189, 248, 0.25)
+                        border.width: 1
+                        visible: plasmoidItem && plasmoidItem.trayUpdateAvailable
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 4
+                            spacing: 6
+
+                            TextInput {
+                                id: trayCmdText
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                text: "omniroute-tray --update-tray"
+                                font.family: "monospace"
+                                font.pixelSize: 10
+                                color: "#e4e4e7"
+                                readOnly: true
+                                selectByMouse: true
+                            }
+
+                            Rectangle {
+                                id: trayCopyBtn
+                                height: 22
+                                radius: 4
+                                Layout.alignment: Qt.AlignVCenter
+                                property bool copied: false
+                                color: trayCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.18) : Qt.rgba(255, 255, 255, 0.08)
+                                implicitWidth: trayCopyLabel.implicitWidth + 12
+
+                                Text {
+                                    id: trayCopyLabel
+                                    anchors.centerIn: parent
+                                    text: trayCopyBtn.copied ? "✓ Copied" : "Copy"
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    color: trayCopyBtn.copied ? "#34d399" : "#ffffff"
+                                }
+
+                                MouseArea {
+                                    id: trayCopyMouse
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        trayCmdText.selectAll();
+                                        trayCmdText.copy();
+                                        trayCopyBtn.copied = true;
+                                        trayCopyTimer.restart();
+                                    }
+                                }
+
+                                Timer {
+                                    id: trayCopyTimer
+                                    interval: 1800
+                                    onTriggered: trayCopyBtn.copied = false
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Clean CLI Shortcut text
-            Text {
+            // Clean CLI Shortcut Strip
+            Rectangle {
                 Layout.fillWidth: true
-                text: "CLI shortcut: omniroute-tray --update-tray"
-                font.pixelSize: 10
-                font.family: "monospace"
-                color: "#52525b"
-                horizontalAlignment: Text.AlignHCenter
+                height: 30
+                radius: 6
+                color: Qt.rgba(255, 255, 255, 0.02)
+                border.color: Qt.rgba(255, 255, 255, 0.06)
+                border.width: 1
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        text: "CLI shortcut"
+                        font.pixelSize: 10
+                        font.weight: Font.Medium
+                        color: "#71717a"
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Rectangle {
+                        id: cliCmdBox
+                        height: 20
+                        radius: 4
+                        color: Qt.rgba(255, 255, 255, 0.05)
+                        border.color: Qt.rgba(255, 255, 255, 0.08)
+                        border.width: 1
+                        implicitWidth: cliCmdText.implicitWidth + 14
+                        Layout.alignment: Qt.AlignVCenter
+
+                        Text {
+                            id: cliCmdText
+                            anchors.centerIn: parent
+                            text: "omniroute-tray --update-tray"
+                            font.pixelSize: 10
+                            font.family: "monospace"
+                            font.weight: Font.Medium
+                            color: "#a1a1aa"
+                        }
+                    }
+
+                    Rectangle {
+                        id: cliCopyBtn
+                        height: 20
+                        radius: 4
+                        Layout.alignment: Qt.AlignVCenter
+                        property bool copied: false
+                        color: cliCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.14) : Qt.rgba(255, 255, 255, 0.06)
+                        border.color: cliCopyBtn.copied ? "#10b981" : (cliCopyMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.10))
+                        border.width: 1
+                        implicitWidth: cliCopyLabel.implicitWidth + 12
+
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                        Text {
+                            id: cliCopyLabel
+                            anchors.centerIn: parent
+                            text: cliCopyBtn.copied ? "✓ Copied" : "Copy"
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            color: cliCopyBtn.copied ? "#34d399" : (cliCopyMouse.containsMouse ? "#ffffff" : "#a1a1aa")
+                        }
+
+                        MouseArea {
+                            id: cliCopyMouse
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: true
+                            onClicked: {
+                                if (plasmoidItem) {
+                                    plasmoidItem.copyToClipboard("omniroute-tray --update-tray");
+                                }
+                                cliCopyBtn.copied = true;
+                                cliCopyTimer.restart();
+                            }
+                        }
+
+                        Timer {
+                            id: cliCopyTimer
+                            interval: 1800
+                            onTriggered: cliCopyBtn.copied = false
+                        }
+
+                        QQC2.ToolTip.visible: cliCopyMouse.containsMouse && !cliCopyBtn.copied
+                        QQC2.ToolTip.text: "Copy command to clipboard"
+                    }
+                }
             }
 
             Item { Layout.preferredHeight: 4 }

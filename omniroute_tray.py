@@ -48,7 +48,7 @@ try:
     )
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
-        QLabel, QMenu, QMessageBox, QProgressBar, QPushButton, QStackedWidget,
+        QLabel, QMenu, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QStackedWidget,
         QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget
     )
     try:
@@ -63,6 +63,7 @@ try:
 except ImportError:
     class QWidget: pass
     class QObject: pass
+    class QPlainTextEdit: pass
     def Signal(*args):
         class _DummySignal:
             def connect(self, *a, **k): pass
@@ -91,6 +92,7 @@ AUTOSTART_FILE = XDG_CONFIG_HOME / "autostart" / "omniroute-tray.desktop"
 OMNIROUTE_HOME = Path.home() / ".omniroute"
 OMNIROUTE_APP_LOG = OMNIROUTE_HOME / "logs" / "application" / "app.log"
 OMNIROUTE_PID_FILE = OMNIROUTE_HOME / "server" / ".pid"
+UNSUPPORTED_USAGE_CACHE_FILE = APP_STATE_DIR / "unsupported_usage_conns.json"
 
 DEFAULT_API_BASE = "http://127.0.0.1:20128"
 DEFAULT_PORT = 20128
@@ -448,7 +450,12 @@ def cli_force_stop(settings: Settings, port: int) -> None:
 
 def spawn_server_daemon(settings: Settings) -> None:
     """Start the server as a detached daemon. Raises if the CLI is missing."""
-    subprocess.Popen([*settings.serve_command, "serve", "--daemon"])
+    subprocess.Popen(
+        [*settings.serve_command, "serve", "--daemon"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 # ============================================================================
@@ -500,25 +507,88 @@ def derive_short_tag(key: str) -> str:
 
 def derive_pretty_model_name(key: str) -> str:
     k = key.lower()
+    # Claude models
     if "claude" in k:
-        if "opus" in k:
-            return "Claude 3.7 Opus" + (" (Thinking)" if "thinking" in k else "")
+        thinking_suffix = " (Thinking)" if "thinking" in k else ""
+        for v in ("4.8", "4-8", "4.7", "4-7", "4.6", "4-6", "4.5", "4-5", "4.1", "4-1", "3.7", "3-7", "3.5", "3-5", "3"):
+            if v in k:
+                dot_v = v.replace("-", ".")
+                if "sonnet" in k:
+                    return f"Claude {dot_v} Sonnet{thinking_suffix}"
+                if "haiku" in k:
+                    return f"Claude {dot_v} Haiku{thinking_suffix}"
+                if "opus" in k:
+                    return f"Claude {dot_v} Opus{thinking_suffix}"
         if "sonnet" in k:
-            return "Claude 3.7 Sonnet"
+            return f"Claude Sonnet{thinking_suffix}"
         if "haiku" in k:
-            return "Claude 3.5 Haiku"
-    if "gemini" in k:
-        if "3.7-flash" in k:
-            return "Gemini 3.7 Flash"
-        if "3.1-pro" in k:
-            return "Gemini 3.1 Pro"
-        if "pro-agent" in k:
-            return "Gemini Pro Agent"
-        if "flash" in k:
-            return "Gemini Flash"
+            return f"Claude Haiku{thinking_suffix}"
+        if "opus" in k:
+            return f"Claude Opus{thinking_suffix}"
+        return f"Claude{thinking_suffix}"
+
+    # OpenAI models
+    if "gpt-4o-mini" in k:
+        return "GPT-4o mini"
+    if "gpt-4o" in k:
+        return "GPT-4o"
+    if "o1-mini" in k:
+        return "o1-mini"
+    if "o1-preview" in k:
+        return "o1-preview"
+    if "o1" in k and ("o1-" in k or k == "o1"):
+        return "o1"
+    if "o3-mini" in k:
+        return "o3-mini"
+    if "o3" in k and ("o3-" in k or k == "o3"):
+        return "o3"
     if "gpt" in k:
         if "120b" in k:
             return "GPT-OSS 120B"
+        if "4-turbo" in k:
+            return "GPT-4 Turbo"
+
+    # Moonshot / Kimi
+    if "kimi" in k:
+        if "k3" in k or "k-3" in k:
+            return "Kimi K3"
+        if "k2" in k or "k-2" in k:
+            return "Kimi K2"
+        return "Kimi"
+
+    # DeepSeek
+    if "deepseek" in k:
+        if "r1" in k or "reasoner" in k:
+            return "DeepSeek R1"
+        if "v3" in k or "chat" in k:
+            return "DeepSeek V3"
+        return "DeepSeek"
+
+    # Google Gemini
+    if "gemini" in k:
+        if "pro-agent" in k:
+            return "Gemini Pro Agent"
+        if "3.7-flash" in k or "3-7-flash" in k:
+            return "Gemini 3.7 Flash"
+        if "3.1-flash" in k or "3-1-flash" in k:
+            return "Gemini 3.1 Flash Lite" if "lite" in k else "Gemini 3.1 Flash"
+        if "3.1-pro" in k or "3-1-pro" in k:
+            return "Gemini 3.1 Pro"
+        if "2.0-flash" in k or "2-0-flash" in k:
+            return "Gemini 2.0 Flash"
+        if "flash-lite" in k or "flash_lite" in k:
+            return "Gemini Flash Lite"
+        if "flash" in k:
+            return "Gemini Flash"
+        if "pro" in k:
+            return "Gemini Pro"
+
+    # Qwen
+    if "qwen" in k:
+        if "2.5" in k or "2-5" in k:
+            return "Qwen 2.5"
+        return "Qwen"
+
     if "credit" in k:
         return "Credits"
     return key.replace("-", " ").title()
@@ -538,6 +608,114 @@ def compact_tokens(n: int) -> str:
     if n >= 1_000:
         return f"{n / 1_000:.1f}K"
     return str(n)
+
+
+def read_log_tail(log_path: Path, max_lines: int = 20, max_bytes: int = 65536) -> List[str]:
+    """Efficiently read the trailing lines from a log file without loading whole file."""
+    try:
+        if not log_path.is_file():
+            return []
+        size = log_path.stat().st_size
+        if size == 0:
+            return []
+        with open(log_path, "rb") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            chunk = f.read().decode("utf-8", "replace")
+            lines = chunk.splitlines()
+            if size > max_bytes and len(lines) > 1:
+                lines = lines[1:]
+            return [l.strip() for l in lines[-max_lines:] if l.strip()]
+    except Exception:
+        return []
+
+
+def prune_omniroute_app_log(max_bytes: int = 10 * 1024 * 1024, keep_lines: int = 500) -> None:
+    """Trim oversized OmniRoute app.log in-place without disrupting active file descriptors."""
+    try:
+        if OMNIROUTE_APP_LOG.is_file() and OMNIROUTE_APP_LOG.stat().st_size > max_bytes:
+            tail_lines = read_log_tail(OMNIROUTE_APP_LOG, max_lines=keep_lines, max_bytes=256 * 1024)
+            if tail_lines:
+                with open(OMNIROUTE_APP_LOG, "w", errors="ignore") as f:
+                    f.write("\n".join(tail_lines) + "\n")
+    except Exception:
+        pass
+
+
+# Upstream-aligned OmniRoute catalog sets for live usage & quota tracking.
+# In OmniRoute, only connections with `provider in USAGE_SUPPORTED_PROVIDERS`
+# and either `authType == "oauth"` or `authType in ("apikey", "api_key") and provider in APIKEY_USAGE_SUPPORTED_PROVIDERS`
+# support live /api/usage/[cid] requests. Querying other connections throws HTTP 400
+# and fills OmniRoute app.log with "Usage not available for this connection" stack traces.
+USAGE_SUPPORTED_PROVIDERS = {
+    "antigravity", "agy", "kiro", "amazon-q", "github", "codex", "claude", "cursor",
+    "qoder", "kimi-coding", "kimi-coding-apikey", "glm", "glm-cn", "zai", "glmt",
+    "opencode-go", "ollama-cloud", "minimax", "minimax-cn", "crof", "nanogpt",
+    "deepseek", "xiaomi-mimo", "xiaomi-mimo-token-plan", "vertex", "vertex-partner",
+    "codebuddy-cn", "promptql", "pql", "adobe-firefly", "firefly", "hyperagent",
+    "ha", "xai-oauth", "xao", "grok-cli", "firecrawl", "volcengine-agent-plan",
+    "volcengine-coding-plan", "command-code", "conol-web", "cnl", "bailian-coding-plan",
+    "qwen-cloud-token-plan", "agentrouter",
+}
+
+APIKEY_USAGE_SUPPORTED_PROVIDERS = {
+    "glm", "glm-cn", "zai", "glmt", "opencode-go", "ollama-cloud", "minimax",
+    "minimax-cn", "crof", "nanogpt", "deepseek", "xiaomi-mimo", "vertex",
+    "vertex-partner", "kimi-coding-apikey", "kiro", "qoder", "promptql", "pql",
+    "adobe-firefly", "firefly", "hyperagent", "ha", "xai-oauth", "xao", "grok-cli",
+    "firecrawl", "volcengine-agent-plan", "volcengine-coding-plan", "command-code",
+    "conol-web", "cnl", "bailian-coding-plan", "qwen-cloud-token-plan",
+}
+
+
+def is_connection_usage_supported(c: dict) -> bool:
+    """Return True if connection `c` supports live usage / rate limits.
+
+    Pre-filters connections to avoid hammering OmniRoute's /api/usage/[id] with
+    providers that lack usage support, preventing log spam in OmniRoute app.log.
+    """
+    if not c or not isinstance(c, dict):
+        return False
+    prov = (c.get("provider") or "").lower()
+    auth_type = (c.get("authType") or "").lower()
+    if prov not in USAGE_SUPPORTED_PROVIDERS:
+        return False
+    if auth_type == "oauth":
+        return True
+    if auth_type in ("apikey", "api_key") and prov in APIKEY_USAGE_SUPPORTED_PROVIDERS:
+        return True
+    return False
+
+
+def _load_unsupported_usage_cache() -> set[str]:
+    """Load cached connection IDs known to return 400 for /api/usage/[id]."""
+    try:
+        if UNSUPPORTED_USAGE_CACHE_FILE.exists():
+            data = json.loads(UNSUPPORTED_USAGE_CACHE_FILE.read_text())
+            if isinstance(data, dict):
+                now = time.time()
+                return {cid for cid, ts in data.items() if (now - float(ts)) < 86400}
+    except Exception:
+        pass
+    return set()
+
+
+def _mark_unsupported_usage_cid(cid: str) -> None:
+    """Record a connection ID as unsupported so we do not repeatedly trigger 400s."""
+    try:
+        ensure_dirs()
+        data = {}
+        if UNSUPPORTED_USAGE_CACHE_FILE.exists():
+            try:
+                raw = json.loads(UNSUPPORTED_USAGE_CACHE_FILE.read_text())
+                if isinstance(raw, dict):
+                    data = raw
+            except Exception:
+                data = {}
+        data[cid] = time.time()
+        UNSUPPORTED_USAGE_CACHE_FILE.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
 
 
 @dataclass
@@ -737,6 +915,47 @@ def get_installed_server_version(settings: "Settings") -> str:
     return raw or "unknown"
 
 
+def check_tray_update() -> dict:
+    """Checks remote git repository for available updates without pulling."""
+    repo = get_tray_repo_dir()
+    if not repo:
+        return {"success": False, "message": "Git repository not found", "update_available": False}
+
+    try:
+        local_head = get_tray_commit()
+        res = subprocess.run(
+            ["git", "-C", str(repo), "ls-remote", "origin", "-h", "refs/heads/main"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if res.returncode != 0:
+            return {"success": False, "message": "Could not connect to GitHub", "update_available": False}
+
+        lines = res.stdout.strip().splitlines()
+        remote_hash = ""
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2 and parts[1] == "refs/heads/main":
+                remote_hash = parts[0]
+                break
+
+        if not remote_hash:
+            return {"success": False, "message": "Remote branch not found", "update_available": False}
+
+        remote_short = remote_hash[:7]
+        update_avail = bool(local_head and remote_short and local_head != remote_short)
+        return {
+            "success": True,
+            "update_available": update_avail,
+            "local_commit": local_head,
+            "remote_commit": remote_short,
+            "message": f"Update available: #{remote_short}" if update_avail else "Up to date with latest release",
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e), "update_available": False}
+
+
 def self_update_tray() -> dict:
     """Updates the tray application from its git repository."""
     repo = get_tray_repo_dir()
@@ -780,7 +999,7 @@ def self_update_tray() -> dict:
             if qml_cache_dir.is_dir():
                 shutil.rmtree(qml_cache_dir, ignore_errors=True)
 
-        msg = "Already up to date!" if already_up_to_date else "Updated successfully!"
+        msg = "Up to date with latest release" if already_up_to_date else "Updated successfully!"
         return {
             "success": True,
             "already_up_to_date": already_up_to_date,
@@ -903,11 +1122,17 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
         pass
 
     # 2. Rate Limits & Quotas (concurrent per connection)
+    unsupported_cids = _load_unsupported_usage_cache()
+
     def _fetch_account_usage(c: dict) -> Optional[AccountUsage]:
         cid = c.get("id")
         provider = c.get("provider", "unknown")
         name = c.get("name") or c.get("email") or provider
         if not cid:
+            return None
+        # Pre-filter to avoid hammering OmniRoute with unsupported connections
+        # which logs "Usage not available for this connection" stack traces.
+        if not is_connection_usage_supported(c) or cid in unsupported_cids:
             return None
         try:
             u_req = urllib.request.Request(f"{base_url}/api/usage/{cid}", headers=headers)
@@ -948,6 +1173,9 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
                     )
                 if windows:
                     return AccountUsage(account_name=name, provider=provider, windows=windows)
+        except urllib.error.HTTPError as he:
+            if he.code in (400, 404):
+                _mark_unsupported_usage_cid(cid)
         except Exception:
             pass
         return None
@@ -1046,9 +1274,11 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
         snap.doctor.append(DoctorItem("OmniRoute CLI", "fail", f"{cli_binary(settings)} command not found"))
 
     db_path = OMNIROUTE_HOME / "storage.sqlite"
+    env_path = OMNIROUTE_HOME / ".env"
     if db_path.is_file():
         mb = db_path.stat().st_size / (1024 * 1024)
-        snap.doctor.append(DoctorItem("Storage Database", "ok", f"storage.sqlite ({mb:.1f} MB)"))
+        config_suffix = " (.env active)" if env_path.is_file() else ""
+        snap.doctor.append(DoctorItem("Storage Database", "ok", f"storage.sqlite ({mb:.1f} MB){config_suffix}"))
     else:
         snap.doctor.append(DoctorItem("Storage Database", "fail", "storage.sqlite missing"))
 
@@ -1073,6 +1303,15 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
     except Exception:
         port_open = False
 
+    if pid is None and port_open:
+        try:
+            cli_name = os.path.basename(cli_binary(settings)) or "omniroute"
+            s_pids = _omni_serve_pids(cli_name)
+            if s_pids:
+                pid = sorted(s_pids)[0]
+        except Exception:
+            pass
+
     snap.server_pid = pid
     snap.server_running = bool(port_open or (pid is not None))
     snap.doctor.append(DoctorItem("Server Status", "ok" if snap.server_running else "fail", f"Port {port} (PID {pid or 'offline'})"))
@@ -1092,12 +1331,7 @@ def fetch_full_snapshot(settings: Settings, plasmoid_extras: bool = True) -> Ful
 
     # 7. Recent Server Logs (consumed only by the plasmoid's snapshot)
     if plasmoid_extras and OMNIROUTE_APP_LOG.is_file():
-        try:
-            with open(OMNIROUTE_APP_LOG, "r", errors="ignore") as f:
-                lines = f.readlines()
-                snap.recent_logs = [l.strip() for l in lines[-8:] if l.strip()]
-        except Exception:
-            pass
+        snap.recent_logs = read_log_tail(OMNIROUTE_APP_LOG, max_lines=8)
 
     return snap
 
@@ -1608,6 +1842,14 @@ QPushButton.action-btn.danger {
 QPushButton.action-btn.danger:hover {
     background-color: rgba(239, 68, 68, 0.28);
 }
+QPushButton.action-btn.success {
+    background-color: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+QPushButton.action-btn.success:hover {
+    background-color: rgba(16, 185, 129, 0.28);
+}
 .upd-versions {
     font-size: 10.5px;
     color: #6b7280;
@@ -1699,6 +1941,14 @@ class OmniRoutePopover(QWidget):
         hl.addWidget(self.lbl_state)
 
         hl.addStretch()
+
+        # Quick Server Toggle (Start / Stop)
+        self.btn_server_toggle = QPushButton("Start")
+        self.btn_server_toggle.setProperty("class", "action-btn success")
+        self.btn_server_toggle.setFixedHeight(22)
+        self.btn_server_toggle.setStyleSheet("font-size: 10.5px; padding: 2px 7px; font-weight: 600;")
+        self.btn_server_toggle.clicked.connect(self._on_server_toggle_clicked)
+        hl.addWidget(self.btn_server_toggle)
 
         # Version
         self.lbl_ver = QLabel("v3.8.50")
@@ -1865,6 +2115,14 @@ class OmniRoutePopover(QWidget):
         self._refresh_doctor_box()
         layout.addLayout(self.doctor_box)
 
+        # Recent Server Logs
+        layout.addWidget(QLabel("<b>Recent Server Logs</b>"))
+        self.txt_recent_logs = QPlainTextEdit()
+        self.txt_recent_logs.setReadOnly(True)
+        self.txt_recent_logs.setFixedHeight(95)
+        self.txt_recent_logs.setStyleSheet("font-family: monospace; font-size: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid #38383a; border-radius: 6px; color: #a1a1aa; padding: 4px;")
+        layout.addWidget(self.txt_recent_logs)
+
         # Updates — mirrors the plasmoid's Updates tab so both frontends report
         # the same thing. Versions come from the polled snapshot; results are
         # pushed back through bridge.update_status.
@@ -1901,9 +2159,9 @@ class OmniRoutePopover(QWidget):
 
         row_tray_btns = QHBoxLayout()
         row_tray_btns.setSpacing(6)
-        self.btn_upd_tray = QPushButton("Update tray app")
+        self.btn_upd_tray = QPushButton("Check tray updates")
         self.btn_upd_tray.setProperty("class", "action-btn")
-        self.btn_upd_tray.clicked.connect(self._update_tray_app)
+        self.btn_upd_tray.clicked.connect(self._check_tray_updates)
         row_tray_btns.addWidget(self.btn_upd_tray)
 
         btn_gh_tray = QPushButton("GitHub ↗")
@@ -2035,10 +2293,32 @@ class OmniRoutePopover(QWidget):
         self.lbl_state.setText(lbl)
         if state in (ServerState.RUNNING, ServerState.ADOPTED):
             self._set_dot_state("running")
-        elif state == ServerState.STARTING:
+            if hasattr(self, "btn_server_toggle"):
+                self.btn_server_toggle.setText("Stop")
+                self.btn_server_toggle.setProperty("class", "action-btn danger")
+                self.btn_server_toggle.setEnabled(True)
+                self.btn_server_toggle.style().unpolish(self.btn_server_toggle)
+                self.btn_server_toggle.style().polish(self.btn_server_toggle)
+        elif state in (ServerState.STARTING, ServerState.STOPPING):
             self._set_dot_state("starting")
+            if hasattr(self, "btn_server_toggle"):
+                self.btn_server_toggle.setText("…")
+                self.btn_server_toggle.setEnabled(False)
         else:
             self._set_dot_state("stopped")
+            if hasattr(self, "btn_server_toggle"):
+                self.btn_server_toggle.setText("Start")
+                self.btn_server_toggle.setProperty("class", "action-btn success")
+                self.btn_server_toggle.setEnabled(True)
+                self.btn_server_toggle.style().unpolish(self.btn_server_toggle)
+                self.btn_server_toggle.style().polish(self.btn_server_toggle)
+
+    def _on_server_toggle_clicked(self):
+        state = self.tray_app.supervisor.state
+        if state in (ServerState.RUNNING, ServerState.ADOPTED):
+            self.tray_app.supervisor.stop()
+        else:
+            self.tray_app.supervisor.start()
 
     def _toggle_quota_mode(self):
         if self.tray_app.settings.percent_mode == "left":
@@ -2102,6 +2382,18 @@ class OmniRoutePopover(QWidget):
         self.lbl_upd_server.setStyleSheet("font-size: 11px; color: #f59e0b;")
         self.tray_app._background_update_check()
 
+    def _check_tray_updates(self):
+        """Kick off remote git check; result lands via bridge.update_status."""
+        self.btn_upd_tray.setEnabled(False)
+        self.lbl_upd_tray.setText("Tray: Checking GitHub repository…")
+        self.lbl_upd_tray.setStyleSheet("font-size: 11px; color: #f59e0b;")
+        def _run():
+            res = check_tray_update()
+            ok = bool(res.get("success"))
+            msg = res.get("message", "Up to date with latest release")
+            self.tray_app.bridge.update_status.emit("tray", msg, not ok)
+        threading.Thread(target=_run, daemon=True).start()
+
     def _update_tray_app(self):
         """Kick off the tray self-update; the result lands via bridge.update_status."""
         self.btn_upd_tray.setEnabled(False)
@@ -2116,8 +2408,21 @@ class OmniRoutePopover(QWidget):
         label = self.lbl_upd_server if component == "server" else self.lbl_upd_tray
         button = self.btn_upd_server if component == "server" else self.btn_upd_tray
         prefix = "Server: " if component == "server" else "Tray: "
-        idle_text = "Check server updates" if component == "server" else "Update tray app"
-        busy_text = "Checking…" if component == "server" else "Updating…"
+        if component == "server":
+            idle_text = "Check server updates"
+            busy_text = "Checking…"
+        else:
+            has_update = "Update available" in text
+            idle_text = "Update tray app" if has_update else "Check tray updates"
+            busy_text = "Updating…" if ("Updating" in text or "Pulling" in text) else "Checking…"
+            try:
+                button.clicked.disconnect()
+            except Exception:
+                pass
+            if has_update:
+                button.clicked.connect(self._update_tray_app)
+            else:
+                button.clicked.connect(self._check_tray_updates)
 
         label.setText(prefix + text)
         label.setStyleSheet(f"font-size: 11px; color: {'#f59e0b' if busy else color};")
@@ -2148,6 +2453,13 @@ class OmniRoutePopover(QWidget):
             lbl = QLabel(f"{mark} <b>{name}</b>: <span style='color:#6b7280;'>{detail}</span>")
             lbl.setStyleSheet("font-size: 11px;")
             self.doctor_box.addWidget(lbl)
+
+        if hasattr(self, "txt_recent_logs"):
+            if OMNIROUTE_APP_LOG.is_file():
+                lines = read_log_tail(OMNIROUTE_APP_LOG, max_lines=6)
+                self.txt_recent_logs.setPlainText("\n".join(lines) if lines else "Server log is empty.")
+            else:
+                self.txt_recent_logs.setPlainText("Server log file not found.")
 
     def _local_doctor_rows(self) -> List[Tuple[str, str, str]]:
         """Filesystem-only checks, for before the first snapshot arrives."""
@@ -2475,6 +2787,19 @@ class TrayApp:
 
     def _background_update_check(self):
         threading.Thread(target=self._async_check_update, daemon=True).start()
+        threading.Thread(target=self._async_check_tray_update, daemon=True).start()
+
+    def _async_check_tray_update(self):
+        try:
+            res = check_tray_update()
+            ok = bool(res.get("success"))
+            upd = bool(res.get("update_available"))
+            msg = res.get("message", "Up to date with latest release")
+            self.bridge.update_status.emit("tray", msg, not ok)
+            if upd:
+                self.tray.showMessage("OmniRoute Tray Update", msg, QSystemTrayIcon.Information, 7000)
+        except Exception as e:
+            self.bridge.update_status.emit("tray", f"Check failed: {e}", True)
 
     def _async_check_update(self):
         """Check npm for a newer server release and report every outcome.
@@ -2581,6 +2906,38 @@ class TrayApp:
 
 
 def main():
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(f"""OmniRoute Tray for Linux v{TRAY_VERSION}
+A system tray supervisor, telemetry dashboard, diagnostics tool, and auto-updater for OmniRoute.
+
+Usage:
+  omniroute-tray [OPTIONS]
+
+Options:
+  --start                  Start the OmniRoute server daemon in background
+  --stop                   Gracefully stop all OmniRoute processes
+  --restart                Restart the OmniRoute server daemon
+  --cost [--range <1d|7d|30d>]
+                           Print spend & token analytics by model as JSON
+  --snapshot [--range <1d|7d|30d>]
+                           Print full telemetry JSON snapshot
+  --toggle-autostart       Toggle start on desktop login
+  --check-tray             Check GitHub for tray updates without pulling
+  --update-tray            Pull the latest code from GitHub and sync widgets
+  --standalone, --force    Run the standalone Qt tray even if KDE Plasmoid is active
+  -v, --version            Show version information and exit
+  -h, --help               Show this help message and exit
+
+If run without arguments, OmniRoute Tray launches the GUI system tray.
+""")
+        sys.exit(0)
+
+    if "--version" in sys.argv or "-v" in sys.argv:
+        commit = get_tray_commit()
+        commit_str = f" ({commit})" if commit and commit != "unknown" else ""
+        print(f"OmniRoute Tray v{TRAY_VERSION}{commit_str}")
+        sys.exit(0)
+
     if "--stop" in sys.argv:
         settings = Settings.load()
         cli_force_stop(settings, get_port_from_url(settings.api_base))
@@ -2589,6 +2946,9 @@ def main():
 
     if "--start" in sys.argv:
         settings = Settings.load()
+        if server_healthy(settings.api_base):
+            print("ALREADY_RUNNING")
+            sys.exit(0)
         try:
             spawn_server_daemon(settings)
         except Exception as e:
@@ -2620,6 +2980,11 @@ def main():
             print("AUTOSTART_ENABLED")
         sys.exit(0)
 
+    if "--check-tray" in sys.argv or "--check-tray-update" in sys.argv:
+        res = check_tray_update()
+        print(json.dumps(res))
+        sys.exit(0 if res.get("success") else 1)
+
     if "--update-tray" in sys.argv:
         res = self_update_tray()
         print(json.dumps(res))
@@ -2645,10 +3010,17 @@ def main():
 
     if "--snapshot" in sys.argv:
         settings = Settings.load()
-        if "--period" in sys.argv:
+        range_val = None
+        if "--range" in sys.argv:
+            idx = sys.argv.index("--range")
+            if idx + 1 < len(sys.argv):
+                range_val = sys.argv[idx + 1]
+        elif "--period" in sys.argv:
             idx = sys.argv.index("--period")
             if idx + 1 < len(sys.argv):
-                settings.cost_range = sys.argv[idx + 1]
+                range_val = sys.argv[idx + 1]
+        if range_val:
+            settings.cost_range = range_val
         snap = fetch_full_snapshot(settings)
         print(json.dumps(asdict(snap)))
         sys.exit(0)

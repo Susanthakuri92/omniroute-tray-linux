@@ -91,12 +91,15 @@ PlasmoidItem {
     property var recentLogsModel: []
     property bool autostartEnabled: false
     property string updateStatus: "Up to date (unknown)"
-    property string trayUpdateStatus: "unknown"
+    property string trayUpdateStatus: "Up to date with latest release"
     property bool isUpdatingTray: false
+    property bool isCheckingTrayUpdate: false
     property bool isCheckingUpdate: false
     // New state for updates
     property string trayVersion: "unknown"
     property string trayCommit: "unknown"
+    property bool trayUpdateAvailable: false
+    property string trayRemoteCommit: ""
     property bool serverUpdateAvailable: false
     property string serverLatestVersion: ""
     property string updateLastChecked: ""
@@ -106,6 +109,18 @@ PlasmoidItem {
     property bool isFetchingSnapshot: false
     property bool trayUpdateError: false
     property string trayUpdateErrorMsg: ""
+    property string serverActionError: ""
+
+    TextEdit {
+        id: clipHelper
+        visible: false
+    }
+
+    function copyToClipboard(str) {
+        clipHelper.text = str;
+        clipHelper.selectAll();
+        clipHelper.copy();
+    }
 
 
     // ========================================================================
@@ -120,16 +135,51 @@ PlasmoidItem {
             var stdout = data["stdout"] || "";
             disconnectSource(sourceName);
 
-            if (sourceName.indexOf("--update-tray") !== -1) {
+            if (sourceName.indexOf("--check-tray") !== -1) {
+                root.isCheckingTrayUpdate = false;
+                root.trayUpdateLastChecked = Qt.formatTime(new Date(), "h:mm:ss AP");
+                var stderrCheck = data["stderr"] || "";
+                try {
+                    var s1 = stdout.indexOf("{");
+                    var e1 = stdout.lastIndexOf("}");
+                    if (s1 !== -1 && e1 !== -1) {
+                        var p1 = JSON.parse(stdout.substring(s1, e1 + 1));
+                        root.trayUpdateAvailable = !!p1.update_available;
+                        root.trayRemoteCommit = p1.remote_commit || "";
+                        if (p1.success) {
+                            root.trayUpdateStatus = p1.update_available ?
+                                ("Update available (#" + p1.remote_commit + ")") :
+                                "Up to date with latest release";
+                            root.trayUpdateError = false;
+                        } else {
+                            root.trayUpdateError = true;
+                            root.trayUpdateErrorMsg = p1.message || "Check failed";
+                        }
+                    } else if (stderrCheck.trim()) {
+                        root.trayUpdateError = true;
+                        root.trayUpdateErrorMsg = stderrCheck.trim();
+                    } else {
+                        root.trayUpdateStatus = "Up to date with latest release";
+                        root.trayUpdateError = false;
+                        root.trayUpdateAvailable = false;
+                    }
+                } catch(err) {
+                    root.trayUpdateError = true;
+                    root.trayUpdateErrorMsg = "Failed to parse check result";
+                }
+            } else if (sourceName.indexOf("--update-tray") !== -1) {
                 root.isUpdatingTray = false;
-                root.trayUpdateLastChecked = new Date().toLocaleTimeString();
+                root.trayUpdateLastChecked = Qt.formatTime(new Date(), "h:mm:ss AP");
                 var stderr = data["stderr"] || "";
                 try {
                     var start = stdout.indexOf("{");
                     var end = stdout.lastIndexOf("}");
                     if (start !== -1 && end !== -1) {
                         var parsed = JSON.parse(stdout.substring(start, end + 1));
-                        root.trayUpdateStatus = parsed.message || (parsed.success ? "Updated!" : "Update failed");
+                        root.trayUpdateAvailable = false;
+                        root.trayUpdateStatus = parsed.already_up_to_date ?
+                            "Up to date with latest release" :
+                            (parsed.success ? "Updated successfully!" : "Update failed");
                         root.trayUpdateError = !parsed.success;
                         root.trayUpdateErrorMsg = parsed.success ? "" : (parsed.message || "Update failed");
                         if (parsed.success) {
@@ -141,17 +191,20 @@ PlasmoidItem {
                     } else if (stdout.trim()) {
                         root.trayUpdateStatus = stdout.trim();
                         root.trayUpdateError = false;
+                        root.trayUpdateAvailable = false;
                     } else if (stderr.trim()) {
                         root.trayUpdateStatus = stderr.trim();
                         root.trayUpdateError = true;
                         root.trayUpdateErrorMsg = stderr.trim();
                     } else {
-                        root.trayUpdateStatus = "Update finished";
+                        root.trayUpdateStatus = "Up to date with latest release";
                         root.trayUpdateError = false;
+                        root.trayUpdateAvailable = false;
                     }
                 } catch(e) {
-                    root.trayUpdateStatus = "Updated!";
+                    root.trayUpdateStatus = "Up to date with latest release";
                     root.trayUpdateError = false;
+                    root.trayUpdateAvailable = false;
                 }
             } else if (sourceName.indexOf("--cost") !== -1) {
                 applyCost(stdout);
@@ -168,7 +221,7 @@ PlasmoidItem {
                 refreshAll();
             } else if (sourceName.indexOf("npm view omniroute") !== -1) {
                 root.isCheckingUpdate = false;
-                root.updateLastChecked = new Date().toLocaleTimeString();
+                root.updateLastChecked = Qt.formatTime(new Date(), "h:mm:ss AP");
                 var ver = stdout.trim();
                 var curVer = root.serverVersion.replace(/^v/, "");
                 if (curVer === "unknown") {
@@ -233,6 +286,12 @@ PlasmoidItem {
 
                     root.isRunning = parsed.server_running || (parsed.health && parsed.health.active_providers > 0);
                     root.serverPid = parsed.server_pid || 0;
+                    if (root.isRunning) {
+                        root.serverActionError = "";
+                        if (root.serverActionState === "starting" || root.serverActionState === "restarting") {
+                            root.serverActionState = "";
+                        }
+                    }
                     root.autostartEnabled = parsed.autostart_enabled || false;
 
                     root.healthActiveProviders = parsed.health.active_providers || 0;
@@ -294,6 +353,7 @@ PlasmoidItem {
                                 wList.push({
                                     key: win.key,
                                     shortTag: win.short_tag,
+                                    prettyLabel: win.pretty_label || win.key,
                                     usedPct: win.used_pct,
                                     remainingPct: win.remaining_pct,
                                     countdown: win.reset_countdown
@@ -338,7 +398,7 @@ PlasmoidItem {
     }
 
     function loadCachedSnapshot() {
-        runCmd("cat /tmp/omniroute_snapshot.json 2>/dev/null || true");
+        runCmd("cat \"${XDG_RUNTIME_DIR:-/tmp}/omniroute_snapshot_${USER:-user}.json\" 2>/dev/null || cat /tmp/omniroute_snapshot.json 2>/dev/null || true");
     }
 
     Timer {
@@ -355,12 +415,20 @@ PlasmoidItem {
         root.isFetchingSnapshot = true;
         snapshotTimeoutTimer.restart();
         var p = period || root.costRange || "30d";
-        runCmd("~/.local/bin/omniroute-tray --snapshot --period " + p + " > /tmp/omniroute_snapshot.json.tmp && mv /tmp/omniroute_snapshot.json.tmp /tmp/omniroute_snapshot.json && cat /tmp/omniroute_snapshot.json # " + Date.now());
+        runCmd("SNAP=\"${XDG_RUNTIME_DIR:-/tmp}/omniroute_snapshot_${USER:-user}.json\"; PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --snapshot --range " + p + " > \"$SNAP.tmp\" && mv -f \"$SNAP.tmp\" \"$SNAP\" && cat \"$SNAP\" # " + Date.now());
     }
 
     function fetchCost(period) {
         var p = period || root.costRange || "30d";
-        runCmd("~/.local/bin/omniroute-tray --cost --range " + p + " # " + Date.now());
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --cost --range " + p + " # " + Date.now());
+    }
+
+    function checkTrayUpdates() {
+        root.isCheckingTrayUpdate = true;
+        root.trayUpdateError = false;
+        root.trayUpdateErrorMsg = "";
+        root.trayUpdateStatus = "Checking GitHub…";
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --check-tray # " + Date.now());
     }
 
     function updateTray() {
@@ -368,7 +436,7 @@ PlasmoidItem {
         root.trayUpdateError = false;
         root.trayUpdateErrorMsg = "";
         root.trayUpdateStatus = "Pulling latest code…";
-        runCmd("~/.local/bin/omniroute-tray --update-tray # " + Date.now());
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --update-tray # " + Date.now());
     }
 
     function checkForUpdates() {
@@ -380,7 +448,7 @@ PlasmoidItem {
     }
 
     function toggleAutostart() {
-        runCmd("~/.local/bin/omniroute-tray --toggle-autostart");
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --toggle-autostart");
         root.autostartEnabled = !root.autostartEnabled;
     }
 
@@ -403,13 +471,14 @@ PlasmoidItem {
             ticks++;
             var xhr = new XMLHttpRequest();
             xhr.open("GET", baseUrl + "/api/monitoring/health");
-            xhr.timeout = 450;
+            xhr.timeout = 1200;
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === XMLHttpRequest.DONE) {
                     if (xhr.status === 200) {
                         if (root.serverActionState === "starting" || root.serverActionState === "restarting") {
                             root.isRunning = true;
                             root.serverActionState = "";
+                            root.serverActionError = "";
                             refreshAll();
                         }
                     } else {
@@ -417,6 +486,7 @@ PlasmoidItem {
                             root.isRunning = false;
                             root.serverPid = 0;
                             root.serverActionState = "";
+                            root.serverActionError = "";
                             refreshAll();
                         }
                     }
@@ -427,13 +497,21 @@ PlasmoidItem {
                     root.isRunning = false;
                     root.serverPid = 0;
                     root.serverActionState = "";
+                    root.serverActionError = "";
                     refreshAll();
                 }
             };
             xhr.send();
 
-            // Fallback timeout after 6 seconds
-            if (ticks > 24) {
+            // Fallback timeout after 15 seconds (Node.js daemon takes a few seconds to warm up)
+            if (ticks > 60) {
+                if (root.serverActionState === "starting" || root.serverActionState === "restarting") {
+                    if (!root.isRunning) {
+                        root.serverActionError = "Server daemon did not become healthy within 15 seconds. Check logs.";
+                    } else {
+                        root.serverActionError = "";
+                    }
+                }
                 root.serverActionState = "";
                 refreshAll();
             }
@@ -441,20 +519,23 @@ PlasmoidItem {
     }
 
     function restartServer() {
+        root.serverActionError = "";
         root.serverActionState = "restarting";
-        runCmd("~/.local/bin/omniroute-tray --restart # " + Date.now());
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --restart # " + Date.now());
         pollTimer.restart();
     }
 
     function startServer() {
+        root.serverActionError = "";
         root.serverActionState = "starting";
-        runCmd("~/.local/bin/omniroute-tray --start # " + Date.now());
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --start # " + Date.now());
         pollTimer.restart();
     }
 
     function stopServer() {
+        root.serverActionError = "";
         root.serverActionState = "stopping";
-        runCmd("~/.local/bin/omniroute-tray --stop # " + Date.now());
+        runCmd("PATH=\"$HOME/.local/bin:$PATH\" omniroute-tray --stop # " + Date.now());
         pollTimer.restart();
     }
 

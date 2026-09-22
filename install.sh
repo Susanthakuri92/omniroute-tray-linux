@@ -108,39 +108,56 @@ stop_tray_processes() {
     done
 }
 
-# Handle uninstall flag
-if [ "${1:-}" = "--uninstall" ]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
-    if [ -f "${SCRIPT_DIR}/uninstall.sh" ]; then
-        exec bash "${SCRIPT_DIR}/uninstall.sh" "${@:2}"
-    fi
-    log_info "Uninstalling OmniRoute Tray..."
-    "${BIN_DIR}/omniroute-tray" --stop 2>/dev/null || true
-    stop_tray_processes
-    remove_managed_path "${BIN_DIR}/omniroute-tray"
-    remove_managed_path "${PLASMOID_DIR}"
-    remove_managed_path "${DESKTOP_DIR}/omniroute-tray.desktop"
-    remove_managed_path "${HOME}/.config/autostart/omniroute-tray.desktop"
-    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray.svg"
-    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-symbolic.svg"
-    remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-active-symbolic.svg"
-    remove_managed_path "${INSTALL_DIR}"
-    remove_managed_path "${HOME}/.cache/plasmashell/qmlcache"
-    remove_managed_path "${HOME}/.cache/qmlcache" || true
-    if command -v kbuildsycoca6 &>/dev/null; then
-        kbuildsycoca6 --noincremental 2>/dev/null || true
-    fi
-    if pgrep -x "plasmashell" &>/dev/null; then
-        systemctl --user restart plasma-plasmashell 2>/dev/null || true
-    fi
-    # Warn about system-wide plasmoid if present
-    if [ -e "$SYSTEM_PLASMOID_DIR" ] || [ -L "$SYSTEM_PLASMOID_DIR" ]; then
-        log_warn "System-wide plasmoid found at $SYSTEM_PLASMOID_DIR"
-        echo "  To remove it (requires root): sudo rm -rf $SYSTEM_PLASMOID_DIR"
-    fi
-    log_success "OmniRoute Tray has been uninstalled."
-    exit 0
-fi
+# Handle flags
+DEV_MODE=0
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)
+            echo -e "${BOLD}OmniRoute Tray Installer${RESET}"
+            echo -e "Usage: ./install.sh [OPTIONS]\n"
+            echo "Options:"
+            echo "  --dev         Install in development mode (symlink directly from current checkout)"
+            echo "  --uninstall   Uninstall OmniRoute Tray and remove desktop / plasmoid entries"
+            echo "  --help, -h    Show this help message"
+            exit 0
+            ;;
+        --dev)
+            DEV_MODE=1
+            ;;
+        --uninstall)
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+            if [ -f "${SCRIPT_DIR}/uninstall.sh" ]; then
+                exec bash "${SCRIPT_DIR}/uninstall.sh" "${@:2}"
+            fi
+            log_info "Uninstalling OmniRoute Tray..."
+            "${BIN_DIR}/omniroute-tray" --stop 2>/dev/null || true
+            stop_tray_processes
+            remove_managed_path "${BIN_DIR}/omniroute-tray"
+            remove_managed_path "${PLASMOID_DIR}"
+            remove_managed_path "${DESKTOP_DIR}/omniroute-tray.desktop"
+            remove_managed_path "${HOME}/.config/autostart/omniroute-tray.desktop"
+            remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray.svg"
+            remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-symbolic.svg"
+            remove_managed_path "${HOME}/.local/share/icons/hicolor/scalable/apps/omniroute-tray-active-symbolic.svg"
+            remove_managed_path "${INSTALL_DIR}"
+            remove_managed_path "${HOME}/.cache/plasmashell/qmlcache"
+            remove_managed_path "${HOME}/.cache/qmlcache" || true
+            if command -v kbuildsycoca6 &>/dev/null; then
+                kbuildsycoca6 --noincremental 2>/dev/null || true
+            fi
+            if pgrep -x "plasmashell" &>/dev/null; then
+                systemctl --user restart plasma-plasmashell 2>/dev/null || true
+            fi
+            # Warn about system-wide plasmoid if present
+            if [ -e "$SYSTEM_PLASMOID_DIR" ] || [ -L "$SYSTEM_PLASMOID_DIR" ]; then
+                log_warn "System-wide plasmoid found at $SYSTEM_PLASMOID_DIR"
+                echo "  To remove it (requires root): sudo rm -rf $SYSTEM_PLASMOID_DIR"
+            fi
+            log_success "OmniRoute Tray has been uninstalled."
+            exit 0
+            ;;
+    esac
+done
 
 echo -e "${BOLD}"
 cat << "EOF"
@@ -176,7 +193,17 @@ mkdir -p "${BIN_DIR}"
 mkdir -p "${DESKTOP_DIR}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
-if [ -n "${SCRIPT_DIR}" ] && [ -f "${SCRIPT_DIR}/omniroute_tray.py" ] && [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
+if [ "${DEV_MODE}" -eq 1 ]; then
+    if [ -f "${SCRIPT_DIR}/omniroute_tray.py" ]; then
+        SOURCE_DIR="${SCRIPT_DIR}"
+    elif [ -f "./omniroute_tray.py" ]; then
+        SOURCE_DIR="$(pwd)"
+    else
+        log_error "--dev was specified but omniroute_tray.py was not found in ${SCRIPT_DIR} or current directory."
+        exit 1
+    fi
+    log_info "Installing in development mode (symlinking directly from ${SOURCE_DIR})..."
+elif [ -n "${SCRIPT_DIR}" ] && [ -f "${SCRIPT_DIR}/omniroute_tray.py" ] && [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
     SOURCE_DIR="${SCRIPT_DIR}"
     log_info "Installing from local directory: ${SOURCE_DIR}"
 else
