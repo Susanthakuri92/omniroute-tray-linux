@@ -89,6 +89,8 @@ git clone https://github.com/Susanthakuri92/omniroute-tray-linux.git
 cd omniroute-tray-linux
 ```
 
+> Run all subsequent commands from within this directory.
+
 #### A. KDE Plasma 6 (Native Widget)
 
 KDE Plasma loads user widgets directly from `~/.local/share/plasma/plasmoids`. Simply link the widget folder:
@@ -102,6 +104,8 @@ systemctl --user restart plasma-plasmashell
 *Then right-click your panel → **Add Widgets…** → drag **OmniRoute** onto your panel or system tray.*
 
 #### B. Other Desktops (GNOME, XFCE, i3, Waybar)
+
+> All commands below assume you are still inside the cloned `omniroute-tray-linux` directory.
 
 1. **Install PySide6:**
    - **Debian / Ubuntu:** `sudo apt install python3-pyside6`
