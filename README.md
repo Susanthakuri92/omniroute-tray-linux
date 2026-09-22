@@ -101,7 +101,7 @@ ln -sfn "$(pwd)/org.omniroute.plasmoid" ~/.local/share/plasma/plasmoids/org.omni
 systemctl --user restart plasma-plasmashell
 ```
 
-*Then right-click your panel → **Add Widgets…** → drag **OmniRoute** onto your panel or system tray.*
+*Check for the Tray if it appears, if not, then right-click your panel → **Add Widgets…** → drag **OmniRoute** onto your panel or system tray.*
 
 #### B. Other Desktops (GNOME, XFCE, i3, Waybar)
 
