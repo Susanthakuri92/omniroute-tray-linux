@@ -82,15 +82,20 @@ The script automatically detects your desktop environment, links the widget or e
 
 ### Method 2: Manual Installation (By Hand)
 
-If you prefer to configure it manually without running an install script:
+First, clone and enter the directory (or `cd contrib/omniroute-tray-linux` if inside the OmniRoute repository):
+
+```bash
+git clone https://github.com/Susanthakuri92/omniroute-tray-linux.git
+cd omniroute-tray-linux
+```
 
 #### A. KDE Plasma 6 (Native Widget)
 
-KDE Plasma loads user widgets directly from `~/.local/share/plasma/plasmoids`. Simply link or copy the widget folder:
+KDE Plasma loads user widgets directly from `~/.local/share/plasma/plasmoids`. Simply link the widget folder:
 
 ```bash
 mkdir -p ~/.local/share/plasma/plasmoids
-cp -r org.omniroute.plasmoid ~/.local/share/plasma/plasmoids/
+ln -sfn "$(pwd)/org.omniroute.plasmoid" ~/.local/share/plasma/plasmoids/org.omniroute.plasmoid
 systemctl --user restart plasma-plasmashell
 ```
 

@@ -89,8 +89,18 @@ echo -e "${BLUE}==>${RESET} Removing executable..."
 rm -f "${BIN_PATH}"
 
 # 6. Remove KDE Plasma widget symlink
-if [ -L "${PLASMOID_DIR}" ] || [ -d "${PLASMOID_DIR}" ]; then
-    echo -e "${BLUE}==>${RESET} Removing KDE Plasma widget..."
+if [ -L "${PLASMOID_DIR}" ]; then
+    echo -e "${BLUE}==>${RESET} Removing KDE Plasma widget symlink..."
+    rm -f "${PLASMOID_DIR}"
+    rm -rf "${HOME}/.cache/plasmashell/qmlcache" "${HOME}/.cache/qmlcache" 2>/dev/null || true
+    if command -v kbuildsycoca6 &>/dev/null; then
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+    fi
+    if pgrep -x "plasmashell" &>/dev/null; then
+        systemctl --user restart plasma-plasmashell 2>/dev/null || true
+    fi
+elif [ -d "${PLASMOID_DIR}" ]; then
+    echo -e "${BLUE}==>${RESET} Removing KDE Plasma widget directory..."
     rm -rf "${PLASMOID_DIR}"
     rm -rf "${HOME}/.cache/plasmashell/qmlcache" "${HOME}/.cache/qmlcache" 2>/dev/null || true
     if command -v kbuildsycoca6 &>/dev/null; then
