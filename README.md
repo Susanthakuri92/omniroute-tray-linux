@@ -152,7 +152,7 @@ systemctl --user restart plasma-plasmashell
 
 ## Uninstallation
 
-To remove OmniRoute Tray:
+To remove the installed OmniRoute Tray:
 
 ```bash
 ./uninstall.sh
@@ -162,6 +162,8 @@ Pass `--purge` to also delete configuration and log files:
 ```bash
 ./uninstall.sh --purge
 ```
+
+> The uninstaller removes the files installed to `~/.local/share/omniroute-tray`, `~/.local/bin/omniroute-tray`, etc. It does **not** remove the original cloned repository. If you wish to delete the source clone as well, remove the directory where you cloned the repository (e.g., `~/Projects/Omniroute-tray`).
 
 ---
 
